@@ -1,0 +1,313 @@
+// LiquidGlass - Real-time frosted glass for Windows (D3D11)
+#include "LiquidGlass.h"
+#include "LiquidGlassShaders.h"
+#include <d3dcompiler.h>
+#include <wrl/client.h>
+#include <wincodec.h>
+#include <cstdio>
+#include <vector>
+#pragma comment(lib,"d3d11.lib")
+#pragma comment(lib,"d3dcompiler.lib")
+#pragma comment(lib,"dxgi.lib")
+#pragma comment(lib,"dxguid.lib")
+#pragma comment(lib,"ole32.lib")
+
+namespace LiquidGlass {
+using Microsoft::WRL::ComPtr;
+
+// ============================================================================
+// Logging — outputs to both console (printf) and VS debug window (OutputDebugStringA)
+// ============================================================================
+static int gFrameCount = 0;
+#define LG_LOG(fmt, ...) do { \
+    char _b[512]; sprintf_s(_b, "[LG:%04d] " fmt "\n", gFrameCount, ##__VA_ARGS__); \
+    printf("%s", _b); OutputDebugStringA(_b); \
+} while(0)
+#define LG_WARN(fmt, ...) do { \
+    char _b[512]; sprintf_s(_b, "[LG:%04d] WARN: " fmt "\n", gFrameCount, ##__VA_ARGS__); \
+    printf("%s", _b); OutputDebugStringA(_b); \
+} while(0)
+#define LG_ERR(fmt, ...) do { \
+    char _b[512]; sprintf_s(_b, "[LG:%04d] ERROR: " fmt "\n", gFrameCount, ##__VA_ARGS__); \
+    printf("%s", _b); OutputDebugStringA(_b); \
+} while(0)
+
+// ============================================================================
+// D3D11 helpers
+// ============================================================================
+struct RT {
+    ComPtr<ID3D11Texture2D> tex; ComPtr<ID3D11RenderTargetView> rtv;
+    ComPtr<ID3D11ShaderResourceView> srv; int w=0,h=0;
+    bool Create(ID3D11Device* d,int ww,int hh,DXGI_FORMAT f=DXGI_FORMAT_R8G8B8A8_UNORM){
+        Release(); D3D11_TEXTURE2D_DESC dd={}; dd.Width=ww;dd.Height=hh;dd.MipLevels=1;
+        dd.ArraySize=1;dd.Format=f;dd.SampleDesc.Count=1;
+        dd.Usage=D3D11_USAGE_DEFAULT;dd.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;
+        if(FAILED(d->CreateTexture2D(&dd,nullptr,tex.GetAddressOf())))return false;
+        d->CreateRenderTargetView(tex.Get(),nullptr,rtv.GetAddressOf());
+        d->CreateShaderResourceView(tex.Get(),nullptr,srv.GetAddressOf());
+        w=ww;h=hh;return true;
+    }
+    void Release(){srv.Reset();rtv.Reset();tex.Reset();w=h=0;}
+};
+
+struct alignas(16) BlurCB{float tsX,tsY;int kr;float sigma;};
+struct alignas(16) ImageCB{float iw,ih,sw,sh;};
+struct alignas(16) GlassCB{float px,py,sx,sy;float cr[4];float siX,siY;float rh,ra;float de,sat;float pad;};
+struct alignas(16) HighlightCB{float px,py,sx,sy;float cr[4],hc[4];float angle,falloff,hw,pad;};
+struct alignas(16) ShadowCB{float px,py,sx,sy;float cr[4],so[2];float sb,p1;float sc[4],p2;};
+
+struct Renderer::Impl {
+    HWND hwnd=nullptr; int width=0,height=0;
+    ComPtr<ID3D11Device> device; ComPtr<ID3D11DeviceContext> ctx; ComPtr<IDXGISwapChain> sc;
+    RT backbuffer,bgRT,blurHRT,blurVRT,glassRT;
+    ComPtr<ID3D11ShaderResourceView> bgImg; int bgImgW=0,bgImgH=0;
+    float bgCol[3]={1,1,1}; bool hasBgCol=false;
+    GlassConfig cfg; // 内部参数（链式 setter 修改此值）
+    ComPtr<ID3D11VertexShader> vs;
+    ComPtr<ID3D11PixelShader> blurH,blurV,refr,disp,hl,shd,img,copy;
+    ComPtr<ID3D11SamplerState> samp;
+    ComPtr<ID3D11BlendState> alphaBlend,addBlend;
+    ComPtr<ID3D11Buffer> cbBlur,cbGlass,cbHL,cbShd,cbImg;
+    ComPtr<ID3D11InfoQueue> iq;
+    static constexpr int KR=15;
+
+    ComPtr<ID3D11PixelShader> CompilePS(const char*s, const char*name){
+        ComPtr<ID3DBlob> b,err;
+        if(FAILED(D3DCompile(s,strlen(s),nullptr,nullptr,nullptr,"main","ps_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,b.GetAddressOf(),err.GetAddressOf()))){
+            if(err)LG_ERR("PS(%s):%s",name,(char*)err->GetBufferPointer());
+            else LG_ERR("PS(%s): unknown error",name);
+            return nullptr;
+        }
+        ComPtr<ID3D11PixelShader> ps; device->CreatePixelShader(b->GetBufferPointer(),b->GetBufferSize(),nullptr,ps.GetAddressOf());
+        return ps;
+    }
+    void DrawFS(){ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);ctx->IASetInputLayout(nullptr);ctx->Draw(3,0);}
+    void SetRT(RT&rt,float r=0,float g=0,float b=0,float a=1){float c[4]={r,g,b,a};ctx->OMSetRenderTargets(1,rt.rtv.GetAddressOf(),nullptr);ctx->ClearRenderTargetView(rt.rtv.Get(),c);D3D11_VIEWPORT vp={0,0,(float)rt.w,(float)rt.h,0,1};ctx->RSSetViewports(1,&vp);}
+    void SetVP(){D3D11_VIEWPORT vp={0,0,(float)width,(float)height,0,1};ctx->RSSetViewports(1,&vp);}
+
+    void ApplyBg(){
+        static int lastMode=-1; // 0=color, 1=image, -1=first
+        ctx->OMSetRenderTargets(1,backbuffer.rtv.GetAddressOf(),nullptr);
+        if(bgImg){
+            ImageCB cb={(float)bgImgW,(float)bgImgH,(float)width,(float)height};
+            ctx->UpdateSubresource(cbImg.Get(),0,nullptr,&cb,0,0);
+            ctx->PSSetConstantBuffers(0,1,cbImg.GetAddressOf());
+            ctx->PSSetShader(img.Get(),nullptr,0);
+            ctx->PSSetShaderResources(0,1,bgImg.GetAddressOf());
+            SetVP();DrawFS();
+            ctx->OMSetRenderTargets(1,bgRT.rtv.GetAddressOf(),nullptr);
+            DrawFS();
+            if(lastMode!=1){LG_LOG("ApplyBg SWITCH to IMAGE %dx%d",bgImgW,bgImgH);lastMode=1;}
+        }else{
+            float r=hasBgCol?bgCol[0]:1, g=hasBgCol?bgCol[1]:1, b=hasBgCol?bgCol[2]:1;
+            float c[4]={r,g,b,1};
+            ctx->ClearRenderTargetView(backbuffer.rtv.Get(),c);
+            ctx->OMSetRenderTargets(1,bgRT.rtv.GetAddressOf(),nullptr);
+            ctx->ClearRenderTargetView(bgRT.rtv.Get(),c);
+            if(lastMode!=0){LG_LOG("ApplyBg SWITCH to COLOR (%.2f,%.2f,%.2f)",r,g,b);lastMode=0;}
+        }
+    }
+    bool LoadImg(const wchar_t*path){
+        ComPtr<IWICImagingFactory> wic;
+        HRESULT hr=CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(wic.GetAddressOf()));
+        if(FAILED(hr)){LG_ERR("WIC factory failed 0x%08X",hr);return false;}
+        ComPtr<IWICBitmapDecoder> dec;
+        hr=wic->CreateDecoderFromFilename(path,nullptr,GENERIC_READ,WICDecodeMetadataCacheOnDemand,dec.GetAddressOf());
+        if(FAILED(hr)){LG_ERR("CreateDecoder failed 0x%08X path=%ls",hr,path);return false;}
+        ComPtr<IWICBitmapFrameDecode> frm;
+        hr=dec->GetFrame(0,frm.GetAddressOf());
+        if(FAILED(hr)){LG_ERR("GetFrame failed 0x%08X",hr);return false;}
+        ComPtr<IWICFormatConverter> conv;wic->CreateFormatConverter(conv.GetAddressOf());
+        conv->Initialize(frm.Get(),GUID_WICPixelFormat32bppRGBA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom);
+        UINT iw=0,ih=0;conv->GetSize(&iw,&ih);
+        std::vector<BYTE> px(iw*ih*4);conv->CopyPixels(nullptr,iw*4,(UINT)px.size(),px.data());
+        D3D11_TEXTURE2D_DESC td={};td.Width=iw;td.Height=ih;td.MipLevels=1;td.ArraySize=1;td.Format=DXGI_FORMAT_R8G8B8A8_UNORM;td.SampleDesc.Count=1;td.Usage=D3D11_USAGE_DEFAULT;td.BindFlags=D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA id={px.data(),iw*4,0};ComPtr<ID3D11Texture2D> t;
+        hr=device->CreateTexture2D(&td,&id,t.GetAddressOf());
+        if(FAILED(hr)){LG_ERR("CreateTexture2D failed 0x%08X size=%dx%d",hr,iw,ih);return false;}
+        bgImg.Reset();device->CreateShaderResourceView(t.Get(),nullptr,bgImg.GetAddressOf());bgImgW=iw;bgImgH=ih;
+        LG_LOG("LoadImg OK %dx%d",iw,ih);
+        return true;
+    }
+};
+
+// ============================================================================
+// Public API
+// ============================================================================
+Renderer::Renderer():m(new Impl){LG_LOG("Renderer created");}
+Renderer::~Renderer(){LG_LOG("Renderer destroyed");delete m;}
+bool Renderer::Init(HWND hwnd,int w,int h){
+    LG_LOG("Init hwnd=%p size=%dx%d",hwnd,w,h);
+    m->hwnd=hwnd;m->width=w;m->height=h;
+    DXGI_SWAP_CHAIN_DESC sd={};sd.BufferCount=2;sd.BufferDesc.Width=w;sd.BufferDesc.Height=h;sd.BufferDesc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;sd.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;sd.OutputWindow=hwnd;sd.SampleDesc.Count=1;sd.Windowed=TRUE;sd.SwapEffect=DXGI_SWAP_EFFECT_DISCARD;
+    UINT flags=D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#ifdef _DEBUG
+    flags|=D3D11_CREATE_DEVICE_DEBUG;
+#endif
+    D3D_FEATURE_LEVEL fl;HRESULT hr=D3D11CreateDeviceAndSwapChain(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,flags,nullptr,0,D3D11_SDK_VERSION,&sd,m->sc.GetAddressOf(),m->device.GetAddressOf(),&fl,m->ctx.GetAddressOf());
+    if(FAILED(hr)){LG_ERR("D3D11CreateDevice failed 0x%08X",hr);return false;}
+    // Setup D3D11 info queue for debug messages
+    if(SUCCEEDED(m->device.As(&m->iq))){
+        LG_LOG("D3D11 debug layer active");
+    }
+    LG_LOG("Device FL 0x%04X",fl);
+    // GPU name
+    ComPtr<IDXGIDevice> dxgiDev;
+    if(SUCCEEDED(m->device.As(&dxgiDev))){
+        ComPtr<IDXGIAdapter> adapter;
+        if(SUCCEEDED(dxgiDev->GetAdapter(adapter.GetAddressOf()))){
+            DXGI_ADAPTER_DESC desc;
+            if(SUCCEEDED(adapter->GetDesc(&desc)))
+                LG_LOG("GPU: %ls VRAM:%zuMB",desc.Description,desc.DedicatedVideoMemory/1048576);
+        }
+    }
+    ComPtr<ID3D11Texture2D> bb;m->sc->GetBuffer(0,IID_PPV_ARGS(bb.GetAddressOf()));m->device->CreateRenderTargetView(bb.Get(),nullptr,m->backbuffer.rtv.GetAddressOf());m->backbuffer.w=w;m->backbuffer.h=h;
+    m->bgRT.Create(m->device.Get(),w,h);m->blurHRT.Create(m->device.Get(),w,h);m->blurVRT.Create(m->device.Get(),w,h);
+    LG_LOG("RTs created: bg blrH blrV %dx%d",w,h);
+    ComPtr<ID3DBlob> vb;D3DCompile(FullscreenVS,strlen(FullscreenVS),nullptr,nullptr,nullptr,"main","vs_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,vb.GetAddressOf(),nullptr);m->device->CreateVertexShader(vb->GetBufferPointer(),vb->GetBufferSize(),nullptr,m->vs.GetAddressOf());
+    m->blurH=m->CompilePS(BlurH_PS,"BlurH");m->blurV=m->CompilePS(BlurV_PS,"BlurV");m->refr=m->CompilePS(GlassRefractionPS,"Refr");m->disp=m->CompilePS(GlassDispersionPS,"Disp");m->hl=m->CompilePS(HighlightPS,"Highl");m->shd=m->CompilePS(ShadowPS,"Shadow");m->img=m->CompilePS(ImageCopyPS,"Image");m->copy=m->CompilePS(PassthroughPS,"Passthru");
+    if(!m->blurH||!m->blurV||!m->refr||!m->disp||!m->hl||!m->shd||!m->img||!m->copy){LG_ERR("Shader compilation failed");return false;}
+    LG_LOG("All 8 shaders OK");
+    D3D11_SAMPLER_DESC sm={};sm.Filter=D3D11_FILTER_MIN_MAG_MIP_LINEAR;sm.AddressU=sm.AddressV=sm.AddressW=D3D11_TEXTURE_ADDRESS_CLAMP;m->device->CreateSamplerState(&sm,m->samp.GetAddressOf());
+    D3D11_BLEND_DESC bd={};bd.RenderTarget[0].BlendEnable=TRUE;bd.RenderTarget[0].SrcBlend=D3D11_BLEND_SRC_ALPHA;bd.RenderTarget[0].DestBlend=D3D11_BLEND_INV_SRC_ALPHA;bd.RenderTarget[0].BlendOp=D3D11_BLEND_OP_ADD;bd.RenderTarget[0].SrcBlendAlpha=D3D11_BLEND_ONE;bd.RenderTarget[0].DestBlendAlpha=D3D11_BLEND_ONE;bd.RenderTarget[0].BlendOpAlpha=D3D11_BLEND_OP_ADD;bd.RenderTarget[0].RenderTargetWriteMask=D3D11_COLOR_WRITE_ENABLE_ALL;m->device->CreateBlendState(&bd,m->alphaBlend.GetAddressOf());
+    bd.RenderTarget[0].SrcBlend=D3D11_BLEND_ONE;bd.RenderTarget[0].DestBlend=D3D11_BLEND_ONE;m->device->CreateBlendState(&bd,m->addBlend.GetAddressOf());
+    D3D11_BUFFER_DESC cbd={};cbd.Usage=D3D11_USAGE_DEFAULT;cbd.BindFlags=D3D11_BIND_CONSTANT_BUFFER;
+    cbd.ByteWidth=sizeof(BlurCB);m->device->CreateBuffer(&cbd,nullptr,m->cbBlur.GetAddressOf());
+    cbd.ByteWidth=sizeof(GlassCB);m->device->CreateBuffer(&cbd,nullptr,m->cbGlass.GetAddressOf());
+    cbd.ByteWidth=sizeof(HighlightCB);m->device->CreateBuffer(&cbd,nullptr,m->cbHL.GetAddressOf());
+    cbd.ByteWidth=sizeof(ShadowCB);m->device->CreateBuffer(&cbd,nullptr,m->cbShd.GetAddressOf());
+    cbd.ByteWidth=sizeof(ImageCB);m->device->CreateBuffer(&cbd,nullptr,m->cbImg.GetAddressOf());
+    LG_LOG("Init complete %dx%d",w,h);
+    return true;
+}
+void Renderer::Resize(int w,int h){
+    if(w==m->width&&h==m->height)return;
+    LG_LOG("Resize %dx%d -> %dx%d",m->width,m->height,w,h);
+    m->width=w;m->height=h;m->ctx->OMSetRenderTargets(0,nullptr,nullptr);
+    m->backbuffer.Release();m->bgRT.Release();m->blurHRT.Release();m->blurVRT.Release();m->glassRT.Release();
+    m->sc->ResizeBuffers(2,w,h,DXGI_FORMAT_R8G8B8A8_UNORM,0);
+    ComPtr<ID3D11Texture2D> bb;m->sc->GetBuffer(0,IID_PPV_ARGS(bb.GetAddressOf()));m->device->CreateRenderTargetView(bb.Get(),nullptr,m->backbuffer.rtv.GetAddressOf());m->backbuffer.w=w;m->backbuffer.h=h;
+    m->bgRT.Create(m->device.Get(),w,h);m->blurHRT.Create(m->device.Get(),w,h);m->blurVRT.Create(m->device.Get(),w,h);
+}
+void Renderer::BeginFrame(){
+    gFrameCount++;
+    float bf[4]={1,1,1,1};D3D11_VIEWPORT vp={0,0,(float)m->width,(float)m->height,0,1};m->ctx->RSSetViewports(1,&vp);m->ctx->VSSetShader(m->vs.Get(),nullptr,0);m->ctx->GSSetShader(nullptr,nullptr,0);m->ctx->PSSetSamplers(0,1,m->samp.GetAddressOf());m->ctx->OMSetBlendState(nullptr,bf,0xFFFFFFFF);m->ApplyBg();
+}
+void Renderer::EndFrame(){
+    HRESULT hr=m->sc->Present(1,0);
+    if(FAILED(hr)){
+        LG_ERR("Present failed HRESULT=0x%08X",hr);
+        if(hr==DXGI_ERROR_DEVICE_REMOVED){
+            HRESULT dr=m->device->GetDeviceRemovedReason();
+            LG_ERR("Device removed! Reason=0x%08X",dr);
+        }
+    }
+    if(gFrameCount<=2) DumpDebugMessages(); // Only first 2 frames for D3D11 validation
+}
+void Renderer::SetBackgroundColor(float r,float g,float b){
+    LG_LOG("SetBackgroundColor(%.2f,%.2f,%.2f)",r,g,b);
+    m->bgCol[0]=r;m->bgCol[1]=g;m->bgCol[2]=b;m->hasBgCol=true;m->bgImg.Reset();
+}
+bool Renderer::LoadBackgroundImage(const wchar_t*p){
+    LG_LOG("LoadBackgroundImage: %ls",p);
+    m->hasBgCol=false;
+    bool ok=m->LoadImg(p);
+    if(ok)LG_LOG("Image loaded %dx%d",m->bgImgW,m->bgImgH);
+    else LG_ERR("Image load FAILED");
+    return ok;
+}
+void Renderer::ClearBackground(){LG_LOG("ClearBackground");m->bgImg.Reset();m->hasBgCol=false;}
+
+// ---- 玻璃参数 setter（链式调用，返回 *this） ----
+Renderer& Renderer::Blur(float s)            { m->cfg.blurSigma = s; return *this; }
+Renderer& Renderer::Saturation(float s)      { m->cfg.saturation = s; return *this; }
+Renderer& Renderer::Refraction(float a)      { m->cfg.refractionAmount = a; return *this; }
+Renderer& Renderer::Radius(float r)          { m->cfg.cornerRadius = r; return *this; }
+Renderer& Renderer::Dispersion(bool on)      { m->cfg.chromaticAberration = on; return *this; }
+Renderer& Renderer::Depth(bool on)           { m->cfg.depthEffect = on; return *this; }
+Renderer& Renderer::Config(const GlassConfig& c) { m->cfg = c; return *this; }
+
+// 使用内部已设置的参数
+void Renderer::RenderGlass(float x,float y,float w,float h){
+    RenderGlass(x, y, w, h, m->cfg);
+}
+
+void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
+    Impl*g=m;float bf[4]={1,1,1,1};
+    static int callCount=0;
+    callCount++;
+    if(callCount==1)
+        LG_LOG("RenderGlass pos=(%.0f,%.0f) size=%.0fx%.0f blur=%.1f refr=%.0f r=%.0f sat=%.2f disp=%d depth=%d",
+            x,y,w,h,c.blurSigma,c.refractionAmount,c.cornerRadius,c.saturation,c.chromaticAberration,c.depthEffect);
+    // Blur pass
+    BlurCB bcb={1.f/g->width,1.f/g->height,Impl::KR,c.blurSigma};
+    g->ctx->UpdateSubresource(g->cbBlur.Get(),0,nullptr,&bcb,0,0);
+    g->ctx->PSSetConstantBuffers(0,1,g->cbBlur.GetAddressOf());
+    g->ctx->PSSetShader(g->blurH.Get(),nullptr,0);
+    // Set new RT first (unbinds old RT), THEN bind old RT's SRV
+    g->SetRT(g->blurHRT);
+    g->ctx->PSSetShaderResources(0,1,g->bgRT.srv.GetAddressOf());
+    g->DrawFS();
+    g->ctx->PSSetShader(g->blurV.Get(),nullptr,0);
+    g->SetRT(g->blurVRT);
+    g->ctx->PSSetShaderResources(0,1,g->blurHRT.srv.GetAddressOf());
+    g->DrawFS();
+    // Glass offscreen RT
+    if(!g->glassRT.tex||g->glassRT.w!=g->width||g->glassRT.h!=g->height){
+        g->glassRT.Create(g->device.Get(),g->width,g->height);
+        if(callCount<=1)LG_LOG("glassRT created %dx%d",g->width,g->height);
+    }
+    g->SetRT(g->glassRT,0,0,0,0); // transparent clear
+    float r=c.cornerRadius,rad[4]={r,r,r,r};
+    GlassCB gc={x,y,w,h,{rad[0],rad[1],rad[2],rad[3]},1.f/g->width,1.f/g->height,c.refractionHeight,c.refractionAmount,c.depthEffect?1.f:0,c.saturation,0};
+    g->ctx->UpdateSubresource(g->cbGlass.Get(),0,nullptr,&gc,0,0);
+    // 1. Shadow pass (alpha blend to glassRT)
+    ShadowCB sc={x,y,w,h,{rad[0],rad[1],rad[2],rad[3]},{0,6},20.f,0,{0,0,0,.30f},0};
+    g->ctx->UpdateSubresource(g->cbShd.Get(),0,nullptr,&sc,0,0);
+    g->ctx->PSSetConstantBuffers(0,1,g->cbShd.GetAddressOf());
+    g->ctx->OMSetBlendState(g->alphaBlend.Get(),bf,0xFFFFFFFF);
+    g->ctx->PSSetShader(g->shd.Get(),nullptr,0);
+    g->DrawFS();
+    // 2. Glass body pass (alpha blend, reads blurVRT)
+    g->ctx->PSSetConstantBuffers(0,1,g->cbGlass.GetAddressOf());
+    g->ctx->PSSetShader(c.chromaticAberration?g->disp.Get():g->refr.Get(),nullptr,0);
+    g->ctx->PSSetShaderResources(0,1,g->blurVRT.srv.GetAddressOf());
+    g->DrawFS();
+    // 3. Composite pass (alpha blend glassRT -> backbuffer)
+    g->ctx->OMSetRenderTargets(1,g->backbuffer.rtv.GetAddressOf(),nullptr);
+    g->SetVP();
+    g->ctx->OMSetBlendState(g->alphaBlend.Get(),bf,0xFFFFFFFF);
+    g->ctx->PSSetShader(g->copy.Get(),nullptr,0);
+    g->ctx->PSSetShaderResources(0,1,g->glassRT.srv.GetAddressOf());
+    g->DrawFS();
+    g->ctx->OMSetBlendState(nullptr,bf,0xFFFFFFFF);
+    if(callCount<=3){
+        LG_LOG("Pipeline done: blur->shadow->glass->composite all executed");
+        LG_LOG("  bg=(img=%d col=%d) bgCol=(%.2f,%.2f,%.2f) imgSize=%dx%d",
+            g->bgImg!=nullptr,g->hasBgCol,g->bgCol[0],g->bgCol[1],g->bgCol[2],g->bgImgW,g->bgImgH);
+        LG_LOG("  glass pos=(%.0f,%.0f) size=%.0fx%.0f radius=%.0f",x,y,w,h,c.cornerRadius);
+        LG_LOG("  RT sizes: bb=%dx%d bg=%dx%d blr=%dx%d glass=%dx%d",
+            g->backbuffer.w,g->backbuffer.h,g->bgRT.w,g->bgRT.h,g->blurVRT.w,g->blurVRT.h,g->glassRT.w,g->glassRT.h);
+    }
+}
+ID3D11Device* Renderer::GetDevice()const{return m->device.Get();}
+ID3D11DeviceContext* Renderer::GetContext()const{return m->ctx.Get();}
+int Renderer::Width()const{return m->width;}
+int Renderer::Height()const{return m->height;}
+bool Renderer::HasBackgroundColor()const{return m->hasBgCol;}
+void Renderer::GetBackgroundColor(float&r,float&g,float&b)const{r=m->bgCol[0];g=m->bgCol[1];b=m->bgCol[2];}
+void Renderer::DumpDebugMessages(){
+    if(!m->iq)return;
+    UINT64 n=m->iq->GetNumStoredMessages();
+    if(n>0)LG_LOG("D3D11 messages: %llu",n);
+    for(UINT64 i=0;i<n;i++){
+        SIZE_T l=0;m->iq->GetMessage(i,nullptr,&l);
+        if(!l)continue;
+        auto*msg=(D3D11_MESSAGE*)_alloca(l);
+        if(SUCCEEDED(m->iq->GetMessage(i,msg,&l)))
+            LG_WARN("D3D11: %s",msg->pDescription);
+    }
+    m->iq->ClearStoredMessages();
+}
+
+} // namespace LiquidGlass

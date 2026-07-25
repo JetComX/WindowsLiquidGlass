@@ -1,0 +1,36 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.db
+*.opendb
+*.db-shm
+*.db-wal
+*.sdf
+*.tlog
+*.lastbuildstate
+*.recipe
+*.ilk
+*.pdb
+*.idb
+*.ipch
+*.iobj
+*.ipdb
+Browse.VC.*
+
+# Build outputs
+x64/
+Win32/
+Debug/
+Release/
+*/x64/
+*/Win32/
+*/Debug/
+*/Release/
+WindowsL.*/
+
+# IDE
+*.sln
+*.slnx
+DocumentLayout.json
+DocumentLayout.backup.json
