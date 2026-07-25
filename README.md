@@ -7,6 +7,8 @@
 
 Real-time frosted glass rendering library for Windows desktop applications. Pure D3D11 + HLSL, zero external dependencies.
 
+![Screenshot](demopicture/demo.png)
+
 ## Supported Platforms
 
 | Platform | Status |
@@ -142,6 +144,8 @@ glass.EndFrame();
 # WindowsLiquidGlass
 
 Windows 桌面应用的实时毛玻璃渲染库。纯 D3D11 + HLSL，零外部依赖。
+
+![截图](demopicture/demo.png)
 
 ## 支持平台
 
