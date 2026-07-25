@@ -130,9 +130,7 @@ glass.EndFrame();
 - Enable the D3D11 debug layer in Debug builds for validation messages
 - The library uses `#pragma comment(lib, ...)` for linker dependencies — no manual linker config needed
 
-## Minimal Demo
-
-See [`WIndowsLiquidGlassTest`](../WIndowsLiquidGlassTest) for a 65-line best-practice example.
+> ⚠️ **This library is in experimental/alpha stage. APIs may change in future versions!**
 
 ## License
 
@@ -268,9 +266,7 @@ glass.EndFrame();
 - Debug 构建自动启用 D3D11 调试层，用于验证渲染调用
 - 库文件使用 `#pragma comment(lib, ...)` 自动链接依赖，无需手动配置
 
-## 最小示例
-
-参见 [`WIndowsLiquidGlassTest`](../WIndowsLiquidGlassTest) 获取 65 行的最佳实践示例。
+> ⚠️ **此库处于实验测试阶段，API 可能会在未来版本中变更！**
 
 ## 许可证
 
