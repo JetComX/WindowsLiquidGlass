@@ -50,26 +50,36 @@ struct RT {
     void Release(){srv.Reset();rtv.Reset();tex.Reset();w=h=0;}
 };
 
-struct alignas(16) BlurCB{float tsX,tsY;int kr;float sigma;float weights[16];};
-struct alignas(16) ImageCB{float iw,ih,sw,sh;};
-struct alignas(16) GlassCB{float px,py,sx,sy;float cr[4];float siX,siY;float rh,ra;float de,sat;float disp;};
-struct alignas(16) HighlightCB{float px,py,sx,sy;float cr[4],hc[4];float angle,falloff,hw,pad;};
-struct alignas(16) ShadowCB{float px,py,sx,sy;float cr[4],so[2];float sb,p1;float sc[4],p2;};
+// Constant buffer structs — must match HLSL packoffset layout exactly
+struct alignas(16) BlurCB{float tsX,tsY;int kr;float sigma;float weights[16];};     // b0: BlurH/BlurV
+struct alignas(16) ImageCB{float iw,ih,sw,sh;};                                      // b0: ImageCopy
+struct alignas(16) GlassCB{float px,py,sx,sy;float cr[4];float siX,siY;float rh,ra;float de,sat;float disp;}; // b0: Refr/Disp
+struct alignas(16) HighlightCB{float px,py,sx,sy;float cr[4],hc[4];float angle,falloff,hw,pad;}; // unused
+struct alignas(16) ShadowCB{float px,py,sx,sy;float cr[4],so[2];float sb,p1;float sc[4],p2;};     // b0: Shadow
 
 struct Renderer::Impl {
+    // D3D11 core
     HWND hwnd=nullptr; int width=0,height=0;
     ComPtr<ID3D11Device> device; ComPtr<ID3D11DeviceContext> ctx; ComPtr<IDXGISwapChain> sc;
+    // Render targets (all window-sized, pre-created in Init/Resize)
     RT backbuffer,bgRT,blurHRT,blurVRT,glassRT;
+    // Background
     ComPtr<ID3D11ShaderResourceView> bgImg; int bgImgW=0,bgImgH=0;
     float bgCol[3]={1,1,1}; bool hasBgCol=false;
-    GlassConfig cfg; // 内部参数（链式 setter 修改此值）
+    GlassConfig cfg; // internal params (modified by fluent setters)
+    // Shaders
     ComPtr<ID3D11VertexShader> vs;
     ComPtr<ID3D11PixelShader> blurH,blurV,refr,disp,shd,img,copy;
+    // State objects
     ComPtr<ID3D11SamplerState> samp;
     ComPtr<ID3D11BlendState> alphaBlend;
+    // Constant buffers
     ComPtr<ID3D11Buffer> cbBlur,cbGlass,cbShd,cbImg;
+    // Cached WIC factory (reused across image loads)
+    ComPtr<IWICImagingFactory> wicFactory;
+    // D3D11 debug layer
     ComPtr<ID3D11InfoQueue> iq;
-    static constexpr int KR=15;
+    static constexpr int KR=15; // Gaussian kernel radius (31-tap = 1 + 2*15)
 
     ComPtr<ID3D11PixelShader> CompilePS(const char*s, const char*name){
         ComPtr<ID3DBlob> b,err;
@@ -108,16 +118,17 @@ struct Renderer::Impl {
         }
     }
     bool LoadImg(const wchar_t*path){
-        ComPtr<IWICImagingFactory> wic;
-        HRESULT hr=CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(wic.GetAddressOf()));
-        if(FAILED(hr)){LG_ERR("WIC factory failed 0x%08X",hr);return false;}
+        if(!wicFactory){
+            HRESULT hr=CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(wicFactory.GetAddressOf()));
+            if(FAILED(hr)){LG_ERR("WIC factory failed 0x%08X",hr);return false;}
+        }
         ComPtr<IWICBitmapDecoder> dec;
-        hr=wic->CreateDecoderFromFilename(path,nullptr,GENERIC_READ,WICDecodeMetadataCacheOnDemand,dec.GetAddressOf());
+        HRESULT hr=wicFactory->CreateDecoderFromFilename(path,nullptr,GENERIC_READ,WICDecodeMetadataCacheOnDemand,dec.GetAddressOf());
         if(FAILED(hr)){LG_ERR("CreateDecoder failed 0x%08X path=%ls",hr,path);return false;}
         ComPtr<IWICBitmapFrameDecode> frm;
         hr=dec->GetFrame(0,frm.GetAddressOf());
         if(FAILED(hr)){LG_ERR("GetFrame failed 0x%08X",hr);return false;}
-        ComPtr<IWICFormatConverter> conv;wic->CreateFormatConverter(conv.GetAddressOf());
+        ComPtr<IWICFormatConverter> conv;wicFactory->CreateFormatConverter(conv.GetAddressOf());
         conv->Initialize(frm.Get(),GUID_WICPixelFormat32bppRGBA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom);
         UINT iw=0,ih=0;conv->GetSize(&iw,&ih);
         std::vector<BYTE> px(iw*ih*4);conv->CopyPixels(nullptr,iw*4,(UINT)px.size(),px.data());

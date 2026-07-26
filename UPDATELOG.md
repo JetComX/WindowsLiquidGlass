@@ -12,11 +12,29 @@
   - `RefractionAmount(float a)` — 折射量/扭曲强度（4~120）
   - 常量缓冲区 `GlassCB` 新增 `disp` 字段传递色散强度
 
-### Controls 面板
-- Dispersion 从复选框 → 滑块（0.0~1.0）
-- 新增 Refraction Height 滑块（4~60）
-- Refraction 标签改为 Refr Amount
-- 移除 Dispersion 复选框
+### Controls 面板重构
+- **ImGui 替换 Win32 控件**：删除 `CtrlWndProc`、`CID` 枚举、所有 Trackbar/Button HWND 全局变量及辅助函数（~180 行）
+- **ImGui 界面**：`ImGui::SliderFloat` 6 个滑块、`ImGui::ColorButton` 10 个颜色按钮、`ImGui::Checkbox`、操作按钮
+- **构建配置**：`WindowsLiquidGlass.vcxproj` 新增 7 个 ImGui 源文件和 2 个包含路径
+- **消息路由**：`MainWndProc` 添加 `ImGui_ImplWin32_WndProcHandler`，滑块/按钮操作时用 `WantCaptureMouse` 阻止玻璃交互
+- **GitHub 链接**：Control Panel 底部添加可点击链接跳转 `github.com/JetComX/WindowsLiquidGlass` + Star 呼吁文字
+
+### 性能优化
+- **移除 imgui_demo.cpp**：~9000 行死代码不再编译（项目无 `ShowDemoWindow()` 调用），减编译时间
+- **WIC Factory 复用**：`IWICImagingFactory` 首次创建后缓存，消除每次 LoadImg 的 `CoCreateInstance` 开销
+
+### README 重写
+- 全新设计：居中标题区 + shields.io 徽章 + 为什么要做这个项目 + 5 分钟快速开始 + 核心特性
+- 新增渲染管线表、着色器说明、路线图、Star History 图表
+- 修复暗化值 85%→92%，补充 `HasBackgroundColor`/`GetBackgroundColor` API
+
+### Bug 修复
+- **缩放时玻璃内竖白线**（奇数尺寸 NaN）：`gradSdRoundedRect` 两处零向量 → `normalize` NaN
+  - corner 分支：`cornerCoord.x==0` 时 `max(cornerCoord,0)=(0,0)` → `normalize((0,0))` NaN。条件 `>=` → `>`，`==0` 时回落 interior 代码路径
+  - interior 分支：`sign(0)=0` 导致零向量。`sign()` → `sx/sy`（`>=0?1:-1`）
+  - `normalize(cc)` 玻璃中心 `cc=(0,0)` NaN。`normalize(cc)` → `cc/(length(cc)+1e-6)`
+  - `c.rgb *= 0.92` → `saturate(c.rgb * 0.92)` 兜底
+
 
 ### 日志增强
 - 每个 setter 调用时打印参数值

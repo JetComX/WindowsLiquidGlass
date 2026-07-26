@@ -1,4 +1,4 @@
-// Windows Liquid Glass — control window + D3D11 glass window
+// Windows Liquid Glass -- ImGui Controls Demo (D3D11 + Dear ImGui)
 #ifndef UNICODE
 #define UNICODE
 #endif
@@ -8,15 +8,16 @@
 #include "LiquidGlass.h"
 #include <windows.h>
 #include <windowsx.h>
-#include <commctrl.h>
 #include <shellapi.h>
 #include <cstdio>
 #include <chrono>
 #include <algorithm>
-#pragma comment(lib,"comctl32.lib")
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx11.h"
 
 // ============================================================================
-// Logging — outputs to both console (wprintf) and VS debug window (OutputDebugStringW)
+// Logging �� outputs to both console (wprintf) and VS debug window (OutputDebugStringW)
 // ============================================================================
 #define APP_LOG(fmt, ...) do { \
     wchar_t _b[512]; swprintf_s(_b, L"[APP] " fmt L"\n", ##__VA_ARGS__); \
@@ -33,49 +34,12 @@
 } while(0)
 
 // ============================================================================
-// Control IDs
-// ============================================================================
-enum CID {
-    ID_BLUR=100, ID_REFR, ID_REFRH, ID_RADIUS, ID_SAT,
-    ID_DISP, ID_DEPTH, ID_WHITE, ID_IMAGE, ID_CONSOLE, ID_RESET,
-    ID_COLOR0, ID_COLOR9=ID_COLOR0+9
-};
-
-
-static const wchar_t* GetIdName(int id) {
-    switch (id) {
-    case ID_BLUR:   return L"BLUR";
-    case ID_REFR:   return L"REFR";
-    case ID_REFRH:  return L"REFRH";
-    case ID_RADIUS: return L"RADIUS";
-    case ID_SAT:    return L"SAT";
-    case ID_DISP:   return L"DISP";
-    case ID_DEPTH:  return L"DEPTH";
-    case ID_WHITE:  return L"WHITE";
-    case ID_IMAGE:  return L"IMAGE";
-    case ID_CONSOLE:return L"CONSOLE";
-    case ID_RESET:  return L"RESET";
-    default:
-        if (id>=ID_COLOR0 && id<=ID_COLOR9) {
-            static wchar_t buf[16];
-            swprintf_s(buf, L"COLOR%d", id-ID_COLOR0);
-            return buf;
-        }
-        return L"???";
-    }
-}
-
-// ============================================================================
 // Globals
 // ============================================================================
 static LiquidGlass::Renderer     gR;
 static LiquidGlass::GlassConfig  gCfg;
 static float    gGX, gGY, gGW, gGH;    // glass position & size
-static HWND     gMainWnd, gCtrlWnd;
-static HWND     gBlur, gRefr, gRefrH, gRadius, gSat, gDisp, gDepth;
-static HWND     gValBlur, gValRefr, gValRefrH, gValRadius, gValSat, gValDisp;
-static HWND     gWhite, gImg, gConsoleBtn, gReset;
-static HWND     gColorBtns[10];
+static HWND     gMainWnd;
 static int      gW, gH, gMx, gMy;
 static bool     gDrag, gConVis = true;
 static float    gDsx, gDsy, gDcx, gDcy;
@@ -84,9 +48,9 @@ static const float kColors[10][3] = {
     {1,.71f,.68f}, {1,.70f,.75f}, {.92f,.71f,.93f}, {.83f,.74f,.99f}, {.73f,.76f,1},
     {.63f,.79f,.99f}, {.51f,.83f,.89f}, {.83f,.78f,.44f}, {.56f,.81f,.95f}, {1,.70f,.73f}
 };
-static const wchar_t* kNames[10] = {
-    L"Red", L"Pink", L"Purple", L"DkPurple", L"Indigo",
-    L"Blue", L"Cyan", L"Yellow", L"Sky", L"Sakura"
+static const char* kNames[10] = {
+    "Red", "Pink", "Purple", "DkPurple", "Indigo",
+    "Blue", "Cyan", "Yellow", "Sky", "Sakura"
 };
 
 // ============================================================================
@@ -126,157 +90,90 @@ static void PrintSystemInfo() {
 }
 
 // ============================================================================
-// Helpers
+// ImGui DrawUI
 // ============================================================================
-static float GetTB(HWND tb, float mn, float mx) {
-    int p = (int)SendMessageW(tb, TBM_GETPOS, 0, 0);
-    return mn + (mx - mn) * p / 1000.0f;
-}
-static void SetTB(HWND tb, float v, float mn, float mx) {
-    SendMessageW(tb, TBM_SETPOS, TRUE, (LPARAM)((v - mn) / (mx - mn) * 1000.0f));
-}
-static void SetVal(HWND lbl, float v, const wchar_t* fmt = L"%.1f") { wchar_t b[16]; swprintf_s(b, fmt, v); SetWindowTextW(lbl, b); }
-static void SetValI(HWND lbl, float v) { wchar_t b[16]; swprintf_s(b, L"%.0f", v); SetWindowTextW(lbl, b); }
+static void DrawUI() {
+    ImGui::SetNextWindowPos(ImVec2((float)gW - 360, 10), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(340, 640), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Control Panel", nullptr);
 
-static void UpdUI() {
-    SetTB(gBlur,    gCfg.blurSigma,         0.1f, 30.0f);  SetVal(gValBlur,   gCfg.blurSigma);
-    SetTB(gRefr,    gCfg.refractionAmount,  4.0f,  120.0f); SetValI(gValRefr,  gCfg.refractionAmount);
-    SetTB(gRefrH,   gCfg.refractionHeight,  4.0f,  60.0f);  SetValI(gValRefrH, gCfg.refractionHeight);
-    SetTB(gRadius,  gCfg.cornerRadius,      0.0f,  80.0f);  SetValI(gValRadius,gCfg.cornerRadius);
-    SetTB(gSat,     gCfg.saturation,        1.0f,  2.0f);   SetVal(gValSat,    gCfg.saturation, L"%.2f");
-    SetTB(gDisp,    gCfg.dispersion,        0.0f,  1.0f);   SetVal(gValDisp,   gCfg.dispersion, L"%.2f");
-    SendMessageW(gDepth, BM_SETCHECK, gCfg.depthEffect ? BST_CHECKED : BST_UNCHECKED, 0);
-}
+    ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), "Windows Liquid Glass");
+    ImGui::Spacing();
 
-// ============================================================================
-// Control window procedure
-// ============================================================================
-LRESULT CALLBACK CtrlWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    switch (msg) {
-    case WM_CREATE: {
-        APP_LOG(L"CtrlWnd WM_CREATE");
-        // Smaller font for color buttons
-        HFONT smallFont = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-            DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-
-        auto mkLbl = [&](const wchar_t* t, int y) {
-            CreateWindowW(L"STATIC", t, WS_CHILD | WS_VISIBLE, 12, y, 75, 16, hwnd, nullptr, nullptr, nullptr);
-        };
-        auto mkVal = [&](int y) -> HWND {
-            return CreateWindowW(L"STATIC", L"0.00", WS_CHILD | WS_VISIBLE | SS_RIGHT, 266, y, 46, 16, hwnd, nullptr, nullptr, nullptr);
-        };
-        auto mkTb = [&](int id, int y) -> HWND {
-            HWND tb = CreateWindowW(TRACKBAR_CLASSW, nullptr,
-                WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_HORZ,
-                88, y, 175, 24, hwnd, (HMENU)(INT_PTR)id, nullptr, nullptr);
-            SendMessageW(tb, TBM_SETRANGE, TRUE, MAKELPARAM(0, 1000));
-            return tb;
-        };
-        int y = 10;
-        mkLbl(L"Blur", y);             gBlur   = mkTb(ID_BLUR, y);   gValBlur   = mkVal(y); y += 26;
-        mkLbl(L"Refr Amount", y);      gRefr   = mkTb(ID_REFR, y);   gValRefr   = mkVal(y); y += 26;
-        mkLbl(L"Refr Height", y);      gRefrH  = mkTb(ID_REFRH, y);  gValRefrH  = mkVal(y); y += 26;
-        mkLbl(L"Radius", y);           gRadius = mkTb(ID_RADIUS, y); gValRadius = mkVal(y); y += 26;
-        mkLbl(L"Saturation", y);       gSat    = mkTb(ID_SAT, y);    gValSat    = mkVal(y); y += 26;
-        mkLbl(L"Dispersion", y);       gDisp   = mkTb(ID_DISP, y);   gValDisp   = mkVal(y); y += 28;
-
-        gDepth = CreateWindowW(L"BUTTON", L"Depth Effect",  WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 12, y, 140, 20, hwnd, (HMENU)(INT_PTR)ID_DEPTH, nullptr, nullptr); y += 28;
-
-        for (int i = 0; i < 10; i++) {
-            int cx = 12 + (i % 5) * 56, cy = y + (i / 5) * 22;
-            HWND btn = CreateWindowW(L"BUTTON", kNames[i],
-                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, cx, cy, 50, 20,
-                hwnd, (HMENU)(INT_PTR)(ID_COLOR0 + i), nullptr, nullptr);
-            SendMessageW(btn, WM_SETFONT, (WPARAM)smallFont, TRUE);
-            gColorBtns[i] = btn;
-        }
-        y += 46;
-
-        gWhite      = CreateWindowW(L"BUTTON", L"White Background", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 12, y, 272, 26, hwnd, (HMENU)(INT_PTR)ID_WHITE,   nullptr, nullptr); y += 28;
-        gImg        = CreateWindowW(L"BUTTON", L"Open Image...",    WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 12, y, 272, 26, hwnd, (HMENU)(INT_PTR)ID_IMAGE,  nullptr, nullptr); y += 28;
-        gConsoleBtn = CreateWindowW(L"BUTTON", L"Show Debug Window", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 12, y, 272, 26, hwnd, (HMENU)(INT_PTR)ID_CONSOLE,nullptr, nullptr); y += 28;
-        gReset      = CreateWindowW(L"BUTTON", L"Reset Glass",     WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 12, y, 272, 26, hwnd, (HMENU)(INT_PTR)ID_RESET,  nullptr, nullptr);
-
-        UpdUI();
-        APP_LOG(L"CtrlWnd controls created");
-        return 0;
+    ImGui::Text("Size: %.0f", gGW); ImGui::SameLine();
+    if (ImGui::Button("Reset")) {
+        gGW = gGH = 220;
+        gGX = (gW - 220.0f) * 0.5f; gGY = (gH - 220.0f) * 0.42f;
+        APP_LOG(L"Reset pos=(%.0f,%.0f) size=%.0f", gGX, gGY, gGW);
     }
+    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.7f), "Mouse wheel = resize | Drag = move");
 
-    case WM_HSCROLL: {
-        int id = GetDlgCtrlID((HWND)lp);
-        float val = 0;
-        switch (id) {
-        case ID_BLUR:   val=gCfg.blurSigma=GetTB(gBlur,0.1f,30.0f); SetVal(gValBlur,val); break;
-        case ID_REFR:   val=gCfg.refractionAmount=GetTB(gRefr,4.0f,120.0f); SetValI(gValRefr,val); break;
-        case ID_REFRH:  val=gCfg.refractionHeight=GetTB(gRefrH,4.0f,60.0f); SetValI(gValRefrH,val); break;
-        case ID_RADIUS: val=gCfg.cornerRadius=GetTB(gRadius,0.0f,80.0f); SetValI(gValRadius,val); break;
-        case ID_SAT:    val=gCfg.saturation=GetTB(gSat,1.0f,2.0f); SetVal(gValSat,val,L"%.2f"); break;
-        case ID_DISP:   val=gCfg.dispersion=GetTB(gDisp,0.0f,1.0f); SetVal(gValDisp,val,L"%.2f"); break;
+    ImGui::Separator();
+    ImGui::SliderFloat("Blur", &gCfg.blurSigma, 0.1f, 30.f, "%.1f");
+    ImGui::SliderFloat("Refr Amount", &gCfg.refractionAmount, 4.f, 120.f, "%.0f");
+    ImGui::SliderFloat("Refr Height", &gCfg.refractionHeight, 4.f, 60.f, "%.0f");
+    ImGui::SliderFloat("Corner Radius", &gCfg.cornerRadius, 0.f, 80.f, "%.0f");
+    ImGui::SliderFloat("Saturation", &gCfg.saturation, 1.f, 2.f, "%.2f");
+    ImGui::SliderFloat("Dispersion", &gCfg.dispersion, 0.f, 1.f, "%.2f");
+    ImGui::Checkbox("Depth Effect", &gCfg.depthEffect);
 
+    ImGui::Separator();
+    ImGui::Text("Background:");
+    for (int i = 0; i < 10; i++) {
+        if (i % 5) ImGui::SameLine();
+        ImGui::PushID(i);
+        float r = kColors[i][0], g = kColors[i][1], b = kColors[i][2];
+        ImGuiColorEditFlags flags = ImGuiColorEditFlags_NoTooltip;
+        if (ImGui::ColorButton(kNames[i], ImVec4(r, g, b, 1), flags, ImVec2(24, 24))) {
+            gR.SetBackgroundColor(r, g, b);
+            APP_LOG(L"BG color: %S (%.2f,%.2f,%.2f)", kNames[i], r, g, b);
         }
-        APP_LOG(L"Slider %s = %.2f", GetIdName(id), val);
-        return 0;
+        ImGui::PopID();
     }
-
-    case WM_COMMAND: {
-        int id = LOWORD(wp);
-        APP_LOG(L"WM_COMMAND id=%d (%s) code=%d", id, GetIdName(id), HIWORD(wp));
-        if (id >= ID_COLOR0 && id <= ID_COLOR9) {
-            int i = id - ID_COLOR0;
-            APP_LOG(L"  -> SetBackgroundColor %s (%.2f,%.2f,%.2f)", kNames[i], kColors[i][0], kColors[i][1], kColors[i][2]);
-            gR.SetBackgroundColor(kColors[i][0], kColors[i][1], kColors[i][2]);
-        }
-        switch (id) {
-        case ID_DEPTH:
-            gCfg.depthEffect = (SendMessageW(gDepth, BM_GETCHECK, 0, 0) == BST_CHECKED);
-            APP_LOG(L"  -> depthEffect = %d", gCfg.depthEffect);
-            break;
-        case ID_WHITE:
-            APP_LOG(L"  -> SetBackgroundColor white");
-            gR.SetBackgroundColor(1, 1, 1);
-            break;
-        case ID_IMAGE: {
-            wchar_t path[MAX_PATH] = {};
-            OPENFILENAMEW ofn = {sizeof(ofn), gMainWnd};
-            ofn.lpstrFile = path; ofn.nMaxFile = MAX_PATH;
-            ofn.lpstrFilter = L"Images\0*.jpg;*.jpeg;*.png;*.bmp\0All\0*.*\0";
-            ofn.Flags = OFN_FILEMUSTEXIST;
-            if (GetOpenFileNameW(&ofn)) {
-                APP_LOG(L"  -> LoadBackgroundImage: %s", path);
-                bool ok = gR.LoadBackgroundImage(path);
-                APP_LOG(L"  -> Result: %s", ok ? L"OK" : L"FAILED");
-            }
-            break;
-        }
-        case ID_CONSOLE:
-            gConVis = !gConVis;
-            ShowWindow(GetConsoleWindow(), gConVis ? SW_SHOW : SW_HIDE);
-            SetWindowTextW(gConsoleBtn, gConVis ? L"Hide Debug Window" : L"Show Debug Window");
-            APP_LOG(L"  -> Console %s", gConVis ? L"shown" : L"hidden");
-            break;
-        case ID_RESET:
-            gGW = gGH = 220;
-            gGX = (gW - 220.0f) * 0.5f; gGY = (gH - 220.0f) * 0.42f;
-            UpdUI();
-            APP_LOG(L"  -> Reset pos=(%.0f,%.0f) size=%.0f", gGX, gGY, gGW);
-            break;
-        }
-        return 0;
+    if (ImGui::Button("White", ImVec2(-1, 0))) {
+        gR.SetBackgroundColor(1, 1, 1);
+        APP_LOG(L"BG: white");
     }
-
-    case WM_CLOSE:
-        APP_LOG(L"CtrlWnd WM_CLOSE -> hide");
-        ShowWindow(hwnd, SW_HIDE);
-        return 0;
+    if (ImGui::Button("Open Image...", ImVec2(-1, 0))) {
+        wchar_t path[MAX_PATH] = {};
+        OPENFILENAMEW ofn = {sizeof(ofn), gMainWnd};
+        ofn.lpstrFile = path; ofn.nMaxFile = MAX_PATH;
+        ofn.lpstrFilter = L"Images\0*.jpg;*.jpeg;*.png;*.bmp\0All\0*.*\0";
+        ofn.Flags = OFN_FILEMUSTEXIST;
+        if (GetOpenFileNameW(&ofn)) {
+            APP_LOG(L"LoadBackgroundImage: %s", path);
+            bool ok = gR.LoadBackgroundImage(path);
+            APP_LOG(L"Result: %s", ok ? L"OK" : L"FAILED");
+        }
     }
-    return DefWindowProc(hwnd, msg, wp, lp);
+    ImGui::Separator();
+
+    if (ImGui::Button(gConVis ? "Hide Console" : "Show Console", ImVec2(-1, 0))) {
+        gConVis = !gConVis;
+        ShowWindow(GetConsoleWindow(), gConVis ? SW_SHOW : SW_HIDE);
+        APP_LOG(L"Console %s", gConVis ? L"shown" : L"hidden");
+    }
+    ImGui::Separator();
+    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), "Visit GitHub: https://github.com/JetComX/WindowsLiquidGlass");
+    if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    if (ImGui::IsItemClicked()) {
+        ShellExecuteW(nullptr, L"open", L"https://github.com/JetComX/WindowsLiquidGlass", nullptr, nullptr, SW_SHOW);
+    }
+    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "If you think this project is pretty good,");
+    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "please give it a Star on GitHub :D");
+    ImGui::End();
 }
 
 // ============================================================================
 // Main window procedure
 // ============================================================================
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp))
+        return true;
     switch (msg) {
     case WM_CREATE:
         APP_LOG(L"MainWnd WM_CREATE hwnd=%p", hwnd);
@@ -294,16 +191,18 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (gDrag) { gGX = gDcx + (gMx - gDsx); gGY = gDcy + (gMy - gDsy); }
         return 0;
 
-    case WM_MOUSEWHEEL: {
-        float d = (float)GET_WHEEL_DELTA_WPARAM(wp) / 120.0f;
+    case WM_MOUSEWHEEL:
+        if (ImGui::GetIO().WantCaptureMouse) return 0;
+        { float d = (float)GET_WHEEL_DELTA_WPARAM(wp) / 120.0f;
         float cx = gGX + gGW * 0.5f, cy = gGY + gGH * 0.5f;
         gGW = gGH = std::max(60.0f, std::min(400.0f, gGW + d * 15.0f));
         gGX = cx - gGW * 0.5f; gGY = cy - gGH * 0.5f;
         return 0;
     }
 
-    case WM_LBUTTONDOWN: {
-        int mx = GET_X_LPARAM(lp), my = GET_Y_LPARAM(lp);
+    case WM_LBUTTONDOWN:
+        if (ImGui::GetIO().WantCaptureMouse) return 0;
+        { int mx = GET_X_LPARAM(lp), my = GET_Y_LPARAM(lp);
         bool hit = (mx >= gGX && mx <= gGX + gGW && my >= gGY && my <= gGY + gGH);
         if (hit) {
             APP_LOG(L"Glass drag START pos=(%.0f,%.0f) size=%.0f mouse=(%d,%d)", gGX, gGY, gGW, mx, my);
@@ -370,7 +269,6 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
 
     ShowWindow(GetConsoleWindow(), SW_HIDE);  // Hidden by default
     gConVis = false;
-    InitCommonControls();
 
     // Main window
     WNDCLASSEXW wc = {sizeof(wc), CS_HREDRAW | CS_VREDRAW, MainWndProc, 0, 0, hInst,
@@ -393,6 +291,14 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     if (!gR.Init(gMainWnd, gW, gH)) { APP_ERR(L"Renderer Init FAILED"); return 1; }
     APP_LOG(L"Renderer initialized OK");
 
+    // ImGui
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::GetIO().IniFilename = nullptr;
+    ImGui_ImplWin32_Init(gMainWnd);
+    ImGui_ImplDX11_Init(gR.GetDevice(), gR.GetContext());
+    APP_LOG(L"ImGui initialized OK");
+
     // Default background image
     APP_LOG(L"Loading default background...");
     if (!gR.LoadBackgroundImage(L"examples/demo/Windows11.png")) {
@@ -407,19 +313,6 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     APP_LOG(L"GlassConfig: blur=%.1f refrA=%.0f refrH=%.0f r=%.0f sat=%.2f disp=%.2f depth=%d",
         gCfg.blurSigma, gCfg.refractionAmount, gCfg.refractionHeight, gCfg.cornerRadius,
         gCfg.saturation, gCfg.dispersion, gCfg.depthEffect);
-
-    // Control window
-    WNDCLASSEXW cwc = {sizeof(cwc), 0, CtrlWndProc, 0, 0, hInst,
-        nullptr, nullptr, (HBRUSH)(COLOR_BTNFACE + 1), nullptr, L"WLGCtrl", nullptr};
-    if (!RegisterClassExW(&cwc)) { APP_ERR(L"RegisterClass CtrlWnd FAILED"); return 1; }
-    gCtrlWnd = CreateWindowExW(0, L"WLGCtrl", L"Controls",
-        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
-        0, 0, 320, 560, gMainWnd, nullptr, hInst, nullptr);
-    if (!gCtrlWnd) { APP_ERR(L"CreateWindow CtrlWnd FAILED"); return 1; }
-    APP_LOG(L"CtrlWnd created: hwnd=%p", gCtrlWnd);
-    SetWindowPos(gCtrlWnd, nullptr, sw - 340, sh / 2 - 280, 320, 560, SWP_NOZORDER);
-
-    UpdUI();
 
     ShowWindow(gMainWnd, nShow);
     UpdateWindow(gMainWnd);
@@ -443,8 +336,15 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
 
         auto now = std::chrono::high_resolution_clock::now();
 
+        ImGui_ImplDX11_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
+        DrawUI();
+
         gR.BeginFrame();
         gR.RenderGlass(gGX, gGY, gGW, gGH, gCfg);
+        ImGui::Render();
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         gR.EndFrame();
 
         frames++;
@@ -460,6 +360,9 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
 
 done:
     APP_LOG(L"Shutting down...");
+    ImGui_ImplDX11_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
     CoUninitialize();
     return 0;
 }
