@@ -42,14 +42,18 @@ VSOutput main(uint id : SV_VertexID) {
 
 static const char* BlurH_PS = R"(
 Texture2D inputTex : register(t0); SamplerState s0 : register(s0);
-cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); float weights[16] : packoffset(c1); };
+cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); float4 weightPack0 : packoffset(c1); float4 weightPack1 : packoffset(c2); float4 weightPack2 : packoffset(c3); float4 weightPack3 : packoffset(c4); };
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 coord = svpos.xy * texelSize;
-    float4 color = inputTex.SampleLevel(s0, coord, 0) * weights[0];
+    float w[16] = { weightPack0.x, weightPack0.y, weightPack0.z, weightPack0.w,
+                    weightPack1.x, weightPack1.y, weightPack1.z, weightPack1.w,
+                    weightPack2.x, weightPack2.y, weightPack2.z, weightPack2.w,
+                    weightPack3.x, weightPack3.y, weightPack3.z, weightPack3.w };
+    float4 color = inputTex.SampleLevel(s0, coord, 0) * w[0];
     for (int i = 1; i <= kernelRadius; i++) {
         float2 off = float2(texelSize.x * float(i), 0.0);
-        color += inputTex.SampleLevel(s0, coord + off, 0) * weights[i];
-        color += inputTex.SampleLevel(s0, coord - off, 0) * weights[i];
+        color += inputTex.SampleLevel(s0, coord + off, 0) * w[i];
+        color += inputTex.SampleLevel(s0, coord - off, 0) * w[i];
     }
     return color;
 }
@@ -57,14 +61,18 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
 
 static const char* BlurV_PS = R"(
 Texture2D inputTex : register(t0); SamplerState s0 : register(s0);
-cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); float weights[16] : packoffset(c1); };
+cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); float4 weightPack0 : packoffset(c1); float4 weightPack1 : packoffset(c2); float4 weightPack2 : packoffset(c3); float4 weightPack3 : packoffset(c4); };
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 coord = svpos.xy * texelSize;
-    float4 color = inputTex.SampleLevel(s0, coord, 0) * weights[0];
+    float w[16] = { weightPack0.x, weightPack0.y, weightPack0.z, weightPack0.w,
+                    weightPack1.x, weightPack1.y, weightPack1.z, weightPack1.w,
+                    weightPack2.x, weightPack2.y, weightPack2.z, weightPack2.w,
+                    weightPack3.x, weightPack3.y, weightPack3.z, weightPack3.w };
+    float4 color = inputTex.SampleLevel(s0, coord, 0) * w[0];
     for (int i = 1; i <= kernelRadius; i++) {
         float2 off = float2(0.0, texelSize.y * float(i));
-        color += inputTex.SampleLevel(s0, coord + off, 0) * weights[i];
-        color += inputTex.SampleLevel(s0, coord - off, 0) * weights[i];
+        color += inputTex.SampleLevel(s0, coord + off, 0) * w[i];
+        color += inputTex.SampleLevel(s0, coord - off, 0) * w[i];
     }
     return color;
 }
