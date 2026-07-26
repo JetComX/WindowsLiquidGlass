@@ -276,7 +276,7 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
     g->ctx->OMSetBlendState(g->alphaBlend.Get(),bf,0xFFFFFFFF);
     g->ctx->PSSetShader(g->shd.Get(),nullptr,0);
     g->DrawFS();
-    // 2. Glass body pass (alpha blend, reads blurVRT)
+    // Glass body pass (reads blurVRT for refraction)
     g->ctx->PSSetConstantBuffers(0,1,g->cbGlass.GetAddressOf());
     g->ctx->PSSetShader(c.dispersion>0.0f?g->disp.Get():g->refr.Get(),nullptr,0);
     g->ctx->PSSetShaderResources(0,1,g->blurVRT.srv.GetAddressOf());

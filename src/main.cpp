@@ -77,6 +77,7 @@ static LiquidGlass::GlassConfig  gCfg;
 static float    gGX, gGY, gGW, gGH;    // glass position & size
 static HWND     gMainWnd, gCtrlWnd;
 static HWND     gBlur, gRefr, gRefrH, gRadius, gSat, gDisp, gDepth;
+static HWND     gValBlur, gValRefr, gValRefrH, gValRadius, gValSat, gValDisp;
 static HWND     gWhite, gImg, gConsoleBtn, gReset;
 static HWND     gColorBtns[10];
 static int      gW, gH, gMx, gMy;
@@ -138,13 +139,16 @@ static float GetTB(HWND tb, float mn, float mx) {
 static void SetTB(HWND tb, float v, float mn, float mx) {
     SendMessageW(tb, TBM_SETPOS, TRUE, (LPARAM)((v - mn) / (mx - mn) * 1000.0f));
 }
+static void SetVal(HWND lbl, float v, const wchar_t* fmt = L"%.1f") { wchar_t b[16]; swprintf_s(b, fmt, v); SetWindowTextW(lbl, b); }
+static void SetValI(HWND lbl, float v) { wchar_t b[16]; swprintf_s(b, L"%.0f", v); SetWindowTextW(lbl, b); }
+
 static void UpdUI() {
-    SetTB(gBlur,    gCfg.blurSigma,         0.1f, 30.0f);
-    SetTB(gRefr,    gCfg.refractionAmount,  4.0f,  120.0f);
-    SetTB(gRefrH,   gCfg.refractionHeight,  4.0f,  60.0f);
-    SetTB(gRadius,  gCfg.cornerRadius,      0.0f,  80.0f);
-    SetTB(gSat,     gCfg.saturation,        1.0f,  2.0f);
-    SetTB(gDisp,    gCfg.dispersion,        0.0f,  1.0f);
+    SetTB(gBlur,    gCfg.blurSigma,         0.1f, 30.0f);  SetVal(gValBlur,   gCfg.blurSigma);
+    SetTB(gRefr,    gCfg.refractionAmount,  4.0f,  120.0f); SetValI(gValRefr,  gCfg.refractionAmount);
+    SetTB(gRefrH,   gCfg.refractionHeight,  4.0f,  60.0f);  SetValI(gValRefrH, gCfg.refractionHeight);
+    SetTB(gRadius,  gCfg.cornerRadius,      0.0f,  80.0f);  SetValI(gValRadius,gCfg.cornerRadius);
+    SetTB(gSat,     gCfg.saturation,        1.0f,  2.0f);   SetVal(gValSat,    gCfg.saturation, L"%.2f");
+    SetTB(gDisp,    gCfg.dispersion,        0.0f,  1.0f);   SetVal(gValDisp,   gCfg.dispersion, L"%.2f");
     SendMessageW(gDepth, BM_SETCHECK, gCfg.depthEffect ? BST_CHECKED : BST_UNCHECKED, 0);
 }
 
@@ -161,22 +165,25 @@ LRESULT CALLBACK CtrlWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
         auto mkLbl = [&](const wchar_t* t, int y) {
-            CreateWindowW(L"STATIC", t, WS_CHILD | WS_VISIBLE, 12, y, 80, 16, hwnd, nullptr, nullptr, nullptr);
+            CreateWindowW(L"STATIC", t, WS_CHILD | WS_VISIBLE, 12, y, 75, 16, hwnd, nullptr, nullptr, nullptr);
+        };
+        auto mkVal = [&](int y) -> HWND {
+            return CreateWindowW(L"STATIC", L"0.00", WS_CHILD | WS_VISIBLE | SS_RIGHT, 250, y, 42, 16, hwnd, nullptr, nullptr, nullptr);
         };
         auto mkTb = [&](int id, int y) -> HWND {
             HWND tb = CreateWindowW(TRACKBAR_CLASSW, nullptr,
                 WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_HORZ,
-                92, y, 188, 24, hwnd, (HMENU)(INT_PTR)id, nullptr, nullptr);
+                88, y, 158, 24, hwnd, (HMENU)(INT_PTR)id, nullptr, nullptr);
             SendMessageW(tb, TBM_SETRANGE, TRUE, MAKELPARAM(0, 1000));
             return tb;
         };
         int y = 10;
-        mkLbl(L"Blur", y);             gBlur   = mkTb(ID_BLUR, y);   y += 26;
-        mkLbl(L"Refr Amount", y);      gRefr   = mkTb(ID_REFR, y);   y += 26;
-        mkLbl(L"Refr Height", y);      gRefrH  = mkTb(ID_REFRH, y);  y += 26;
-        mkLbl(L"Radius", y);           gRadius = mkTb(ID_RADIUS, y); y += 26;
-        mkLbl(L"Saturation", y);       gSat    = mkTb(ID_SAT, y);    y += 26;
-        mkLbl(L"Dispersion", y);       gDisp   = mkTb(ID_DISP, y);   y += 28;
+        mkLbl(L"Blur", y);             gBlur   = mkTb(ID_BLUR, y);   gValBlur   = mkVal(y); y += 26;
+        mkLbl(L"Refr Amount", y);      gRefr   = mkTb(ID_REFR, y);   gValRefr   = mkVal(y); y += 26;
+        mkLbl(L"Refr Height", y);      gRefrH  = mkTb(ID_REFRH, y);  gValRefrH  = mkVal(y); y += 26;
+        mkLbl(L"Radius", y);           gRadius = mkTb(ID_RADIUS, y); gValRadius = mkVal(y); y += 26;
+        mkLbl(L"Saturation", y);       gSat    = mkTb(ID_SAT, y);    gValSat    = mkVal(y); y += 26;
+        mkLbl(L"Dispersion", y);       gDisp   = mkTb(ID_DISP, y);   gValDisp   = mkVal(y); y += 28;
 
         gDepth = CreateWindowW(L"BUTTON", L"Depth Effect",  WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 12, y, 140, 20, hwnd, (HMENU)(INT_PTR)ID_DEPTH, nullptr, nullptr); y += 28;
 
@@ -204,12 +211,12 @@ LRESULT CALLBACK CtrlWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         int id = GetDlgCtrlID((HWND)lp);
         float val = 0;
         switch (id) {
-        case ID_BLUR:   val=gCfg.blurSigma=GetTB(gBlur,0.1f,30.0f); break;
-        case ID_REFR:   val=gCfg.refractionAmount=GetTB(gRefr,4.0f,120.0f); break;
-        case ID_REFRH:  val=gCfg.refractionHeight=GetTB(gRefrH,4.0f,60.0f); break;
-        case ID_RADIUS: val=gCfg.cornerRadius=GetTB(gRadius,0.0f,80.0f); break;
-        case ID_SAT:    val=gCfg.saturation=GetTB(gSat,1.0f,2.0f); break;
-        case ID_DISP:   val=gCfg.dispersion=GetTB(gDisp,0.0f,1.0f); break;
+        case ID_BLUR:   val=gCfg.blurSigma=GetTB(gBlur,0.1f,30.0f); SetVal(gValBlur,val); break;
+        case ID_REFR:   val=gCfg.refractionAmount=GetTB(gRefr,4.0f,120.0f); SetValI(gValRefr,val); break;
+        case ID_REFRH:  val=gCfg.refractionHeight=GetTB(gRefrH,4.0f,60.0f); SetValI(gValRefrH,val); break;
+        case ID_RADIUS: val=gCfg.cornerRadius=GetTB(gRadius,0.0f,80.0f); SetValI(gValRadius,val); break;
+        case ID_SAT:    val=gCfg.saturation=GetTB(gSat,1.0f,2.0f); SetVal(gValSat,val,L"%.2f"); break;
+        case ID_DISP:   val=gCfg.dispersion=GetTB(gDisp,0.0f,1.0f); SetVal(gValDisp,val,L"%.2f"); break;
 
         }
         APP_LOG(L"Slider %s = %.2f", GetIdName(id), val);
