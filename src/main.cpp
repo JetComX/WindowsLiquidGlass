@@ -1,6 +1,10 @@
 // Windows Liquid Glass — control window + D3D11 glass window
+#ifndef UNICODE
 #define UNICODE
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include "LiquidGlass.h"
 #include <windows.h>
 #include <windowsx.h>
@@ -72,8 +76,8 @@ static LiquidGlass::Renderer     gR;
 static LiquidGlass::GlassConfig  gCfg;
 static float    gGX, gGY, gGW, gGH;    // glass position & size
 static HWND     gMainWnd, gCtrlWnd;
-static HWND     gBlur, gRefr, gRefrH, gRadius, gSat, gDisp;
-static HWND     gDisp, gDepth, gWhite, gImg, gConsoleBtn, gReset;
+static HWND     gBlur, gRefr, gRefrH, gRadius, gSat, gDisp, gDepth;
+static HWND     gWhite, gImg, gConsoleBtn, gReset;
 static HWND     gColorBtns[10];
 static int      gW, gH, gMx, gMy;
 static bool     gDrag, gConVis = true;
@@ -397,8 +401,8 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     gGX = (gW - 220.0f) * 0.5f;
     gGY = (gH - 220.0f) * 0.42f;
     APP_LOG(L"Glass initial: pos=(%.0f,%.0f) size=%.0f", gGX, gGY, gGW);
-    APP_LOG(L"GlassConfig: blur=%.1f refr=%.0f r=%.0f sat=%.2f hl=%.2f disp=%d depth=%d",
-        gCfg.blurSigma, gCfg.refractionAmount, gCfg.cornerRadius,
+    APP_LOG(L"GlassConfig: blur=%.1f refrA=%.0f refrH=%.0f r=%.0f sat=%.2f disp=%.2f depth=%d",
+        gCfg.blurSigma, gCfg.refractionAmount, gCfg.refractionHeight, gCfg.cornerRadius,
         gCfg.saturation, gCfg.dispersion, gCfg.depthEffect);
 
     // Control window
