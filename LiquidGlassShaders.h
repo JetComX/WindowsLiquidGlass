@@ -42,37 +42,31 @@ VSOutput main(uint id : SV_VertexID) {
 
 static const char* BlurH_PS = R"(
 Texture2D inputTex : register(t0); SamplerState s0 : register(s0);
-cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); };
+cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); float weights[16] : packoffset(c1); };
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 coord = svpos.xy * texelSize;
-    float sumW = 1.0;
-    float4 color = inputTex.SampleLevel(s0, coord, 0);
+    float4 color = inputTex.SampleLevel(s0, coord, 0) * weights[0];
     for (int i = 1; i <= kernelRadius; i++) {
-        float w = exp(-(float(i)*float(i))/(2.0*sigma*sigma));
-        sumW += 2.0 * w;
         float2 off = float2(texelSize.x * float(i), 0.0);
-        color += inputTex.SampleLevel(s0, coord + off, 0) * w;
-        color += inputTex.SampleLevel(s0, coord - off, 0) * w;
+        color += inputTex.SampleLevel(s0, coord + off, 0) * weights[i];
+        color += inputTex.SampleLevel(s0, coord - off, 0) * weights[i];
     }
-    return color / sumW;
+    return color;
 }
 )";
 
 static const char* BlurV_PS = R"(
 Texture2D inputTex : register(t0); SamplerState s0 : register(s0);
-cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); };
+cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); float weights[16] : packoffset(c1); };
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 coord = svpos.xy * texelSize;
-    float sumW = 1.0;
-    float4 color = inputTex.SampleLevel(s0, coord, 0);
+    float4 color = inputTex.SampleLevel(s0, coord, 0) * weights[0];
     for (int i = 1; i <= kernelRadius; i++) {
-        float w = exp(-(float(i)*float(i))/(2.0*sigma*sigma));
-        sumW += 2.0 * w;
         float2 off = float2(0.0, texelSize.y * float(i));
-        color += inputTex.SampleLevel(s0, coord + off, 0) * w;
-        color += inputTex.SampleLevel(s0, coord - off, 0) * w;
+        color += inputTex.SampleLevel(s0, coord + off, 0) * weights[i];
+        color += inputTex.SampleLevel(s0, coord - off, 0) * weights[i];
     }
-    return color / sumW;
+    return color;
 }
 )";
 

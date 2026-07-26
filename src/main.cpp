@@ -427,8 +427,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     APP_LOG(L"  Entering main loop");
     APP_LOG(L"========================================");
 
-    auto prev = std::chrono::high_resolution_clock::now();
-    auto fpsT = prev;
+    auto fpsT = std::chrono::high_resolution_clock::now();
     int frames = 0;
     MSG msg;
 
@@ -443,15 +442,13 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
         }
 
         auto now = std::chrono::high_resolution_clock::now();
-        float dt = std::min(0.1f, std::chrono::duration<float>(now - prev).count());
-        prev = now;
 
         gR.BeginFrame();
         gR.RenderGlass(gGX, gGY, gGW, gGH, gCfg);
         gR.EndFrame();
 
         frames++;
-        if (std::chrono::duration<float>(now - fpsT).count() >= 1.0f) {
+        if (std::chrono::duration<float>(now-fpsT).count() >= 1.0f) {
             float fps = (float)frames / std::chrono::duration<float>(now - fpsT).count();
             wchar_t title[128];
             swprintf_s(title, L"WLG | %.0f FPS", fps);

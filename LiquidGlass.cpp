@@ -50,7 +50,7 @@ struct RT {
     void Release(){srv.Reset();rtv.Reset();tex.Reset();w=h=0;}
 };
 
-struct alignas(16) BlurCB{float tsX,tsY;int kr;float sigma;};
+struct alignas(16) BlurCB{float tsX,tsY;int kr;float sigma;float weights[16];};
 struct alignas(16) ImageCB{float iw,ih,sw,sh;};
 struct alignas(16) GlassCB{float px,py,sx,sy;float cr[4];float siX,siY;float rh,ra;float de,sat;float disp;};
 struct alignas(16) HighlightCB{float px,py,sx,sy;float cr[4],hc[4];float angle,falloff,hw,pad;};
@@ -162,7 +162,7 @@ bool Renderer::Init(HWND hwnd,int w,int h){
         }
     }
     ComPtr<ID3D11Texture2D> bb;m->sc->GetBuffer(0,IID_PPV_ARGS(bb.GetAddressOf()));m->device->CreateRenderTargetView(bb.Get(),nullptr,m->backbuffer.rtv.GetAddressOf());m->backbuffer.w=w;m->backbuffer.h=h;
-    m->bgRT.Create(m->device.Get(),w,h);m->blurHRT.Create(m->device.Get(),w,h);m->blurVRT.Create(m->device.Get(),w,h);
+    m->bgRT.Create(m->device.Get(),w,h);m->blurHRT.Create(m->device.Get(),w,h);m->blurVRT.Create(m->device.Get(),w,h);m->glassRT.Create(m->device.Get(),w,h);
     LG_LOG("RTs created: bg blrH blrV %dx%d",w,h);
     ComPtr<ID3DBlob> vb;D3DCompile(FullscreenVS,strlen(FullscreenVS),nullptr,nullptr,nullptr,"main","vs_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,vb.GetAddressOf(),nullptr);m->device->CreateVertexShader(vb->GetBufferPointer(),vb->GetBufferSize(),nullptr,m->vs.GetAddressOf());
     m->blurH=m->CompilePS(BlurH_PS,"BlurH");m->blurV=m->CompilePS(BlurV_PS,"BlurV");m->refr=m->CompilePS(GlassRefractionPS,"Refr");m->disp=m->CompilePS(GlassDispersionPS,"Disp");m->shd=m->CompilePS(ShadowPS,"Shadow");m->img=m->CompilePS(ImageCopyPS,"Image");m->copy=m->CompilePS(PassthroughPS,"Passthru");
@@ -187,7 +187,7 @@ void Renderer::Resize(int w,int h){
     m->backbuffer.Release();m->bgRT.Release();m->blurHRT.Release();m->blurVRT.Release();m->glassRT.Release();
     m->sc->ResizeBuffers(2,w,h,DXGI_FORMAT_R8G8B8A8_UNORM,0);
     ComPtr<ID3D11Texture2D> bb;m->sc->GetBuffer(0,IID_PPV_ARGS(bb.GetAddressOf()));m->device->CreateRenderTargetView(bb.Get(),nullptr,m->backbuffer.rtv.GetAddressOf());m->backbuffer.w=w;m->backbuffer.h=h;
-    m->bgRT.Create(m->device.Get(),w,h);m->blurHRT.Create(m->device.Get(),w,h);m->blurVRT.Create(m->device.Get(),w,h);
+    m->bgRT.Create(m->device.Get(),w,h);m->blurHRT.Create(m->device.Get(),w,h);m->blurVRT.Create(m->device.Get(),w,h);m->glassRT.Create(m->device.Get(),w,h);
 }
 void Renderer::BeginFrame(){
     gFrameCount++;
@@ -237,11 +237,15 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
     Impl*g=m;float bf[4]={1,1,1,1};
     static int callCount=0;
     callCount++;
+#ifdef _DEBUG
     if(callCount==1)
+#endif
         LG_LOG("RenderGlass pos=(%.0f,%.0f) size=%.0fx%.0f blur=%.1f refrH=%.0f refrA=%.0f r=%.0f sat=%.2f disp=%.2f depth=%d",
             x,y,w,h,c.blurSigma,c.refractionHeight,c.refractionAmount,c.cornerRadius,c.saturation,c.dispersion,c.depthEffect);
-    // Blur pass
-    BlurCB bcb={1.f/g->width,1.f/g->height,Impl::KR,c.blurSigma};
+    // Blur pass — precompute Gaussian weights on CPU
+    BlurCB bcb={1.f/g->width,1.f/g->height,Impl::KR,c.blurSigma,{}};
+    { float sumW=1.f; for(int i=1;i<=Impl::KR;i++) sumW+=2.f*expf(-float(i*i)/(2.f*c.blurSigma*c.blurSigma)); bcb.weights[0]=1.f/sumW;
+      for(int i=1;i<=Impl::KR;i++) bcb.weights[i]=expf(-float(i*i)/(2.f*c.blurSigma*c.blurSigma))/sumW; }
     g->ctx->UpdateSubresource(g->cbBlur.Get(),0,nullptr,&bcb,0,0);
     g->ctx->PSSetConstantBuffers(0,1,g->cbBlur.GetAddressOf());
     g->ctx->PSSetShader(g->blurH.Get(),nullptr,0);
@@ -253,15 +257,12 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
     g->SetRT(g->blurVRT);
     g->ctx->PSSetShaderResources(0,1,g->blurHRT.srv.GetAddressOf());
     g->DrawFS();
-    // Glass offscreen RT
-    if(!g->glassRT.tex||g->glassRT.w!=g->width||g->glassRT.h!=g->height){
-        g->glassRT.Create(g->device.Get(),g->width,g->height);
-        if(callCount<=1)LG_LOG("glassRT created %dx%d",g->width,g->height);
-    }
+    // Glass offscreen RT (pre-created in Init/Resize)
     g->SetRT(g->glassRT,0,0,0,0); // transparent clear
     float r=c.cornerRadius,rad[4]={r,r,r,r};
     GlassCB gc={x,y,w,h,{rad[0],rad[1],rad[2],rad[3]},1.f/g->width,1.f/g->height,c.refractionHeight,c.refractionAmount,c.depthEffect?1.f:0,c.saturation,c.dispersion};
     g->ctx->UpdateSubresource(g->cbGlass.Get(),0,nullptr,&gc,0,0);
+#ifdef _DEBUG
     if(callCount<=3){
         LG_LOG("GlassCB upload: pos=(%.0f,%.0f) size=(%.0f,%.0f) radii=(%.0f,%.0f,%.0f,%.0f)",
             gc.px,gc.py,gc.sx,gc.sy,gc.cr[0],gc.cr[1],gc.cr[2],gc.cr[3]);
@@ -269,6 +270,7 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
             gc.siX,gc.siY,gc.rh,gc.ra,gc.de,gc.sat,gc.disp);
         LG_LOG("GlassCB upload: sizeof(GlassCB)=%zu bytes",sizeof(GlassCB));
     }
+#endif
     // 1. Shadow pass (alpha blend to glassRT)
     ShadowCB sc={x,y,w,h,{rad[0],rad[1],rad[2],rad[3]},{0,6},20.f,0,{0,0,0,.30f},0};
     g->ctx->UpdateSubresource(g->cbShd.Get(),0,nullptr,&sc,0,0);
@@ -289,6 +291,7 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
     g->ctx->PSSetShaderResources(0,1,g->glassRT.srv.GetAddressOf());
     g->DrawFS();
     g->ctx->OMSetBlendState(nullptr,bf,0xFFFFFFFF);
+#ifdef _DEBUG
     if(callCount<=3){
         LG_LOG("=== Pipeline step-by-step ===");
         LG_LOG("  1.Blur: sigma=%.1f kernelRadius=%d bgRT(%dx%d)->blurHRT->blurVRT",
@@ -302,6 +305,7 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
             g->bgImg!=nullptr,g->hasBgCol,g->bgCol[0],g->bgCol[1],g->bgCol[2],g->bgImgW,g->bgImgH);
         LG_LOG("  Glass: pos=(%.0f,%.0f) size=%.0fx%.0f radius=%.0f",x,y,w,h,c.cornerRadius);
     }
+#endif
 }
 ID3D11Device* Renderer::GetDevice()const{return m->device.Get();}
 ID3D11DeviceContext* Renderer::GetContext()const{return m->ctx.Get();}
