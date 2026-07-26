@@ -166,7 +166,7 @@ bool Renderer::Init(HWND hwnd,int w,int h){
     LG_LOG("RTs created: bg blrH blrV %dx%d",w,h);
     ComPtr<ID3DBlob> vb;D3DCompile(FullscreenVS,strlen(FullscreenVS),nullptr,nullptr,nullptr,"main","vs_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,vb.GetAddressOf(),nullptr);m->device->CreateVertexShader(vb->GetBufferPointer(),vb->GetBufferSize(),nullptr,m->vs.GetAddressOf());
     m->blurH=m->CompilePS(BlurH_PS,"BlurH");m->blurV=m->CompilePS(BlurV_PS,"BlurV");m->refr=m->CompilePS(GlassRefractionPS,"Refr");m->disp=m->CompilePS(GlassDispersionPS,"Disp");m->shd=m->CompilePS(ShadowPS,"Shadow");m->img=m->CompilePS(ImageCopyPS,"Image");m->copy=m->CompilePS(PassthroughPS,"Passthru");
-    if(!m->blurH||!m->blurV||!m->refr||!m->disp||!m->hl||!m->shd||!m->img||!m->copy){LG_ERR("Shader compilation failed");return false;}
+    if(!m->blurH||!m->blurV||!m->refr||!m->disp||!m->shd||!m->img||!m->copy){LG_ERR("Shader compilation failed");return false;}
     LG_LOG("All 8 shaders OK");
     D3D11_SAMPLER_DESC sm={};sm.Filter=D3D11_FILTER_MIN_MAG_MIP_LINEAR;sm.AddressU=sm.AddressV=sm.AddressW=D3D11_TEXTURE_ADDRESS_CLAMP;m->device->CreateSamplerState(&sm,m->samp.GetAddressOf());
     D3D11_BLEND_DESC bd={};bd.RenderTarget[0].BlendEnable=TRUE;bd.RenderTarget[0].SrcBlend=D3D11_BLEND_SRC_ALPHA;bd.RenderTarget[0].DestBlend=D3D11_BLEND_INV_SRC_ALPHA;bd.RenderTarget[0].BlendOp=D3D11_BLEND_OP_ADD;bd.RenderTarget[0].SrcBlendAlpha=D3D11_BLEND_ONE;bd.RenderTarget[0].DestBlendAlpha=D3D11_BLEND_ONE;bd.RenderTarget[0].BlendOpAlpha=D3D11_BLEND_OP_ADD;bd.RenderTarget[0].RenderTargetWriteMask=D3D11_COLOR_WRITE_ENABLE_ALL;m->device->CreateBlendState(&bd,m->alphaBlend.GetAddressOf());
