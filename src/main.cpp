@@ -168,12 +168,12 @@ LRESULT CALLBACK CtrlWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             CreateWindowW(L"STATIC", t, WS_CHILD | WS_VISIBLE, 12, y, 75, 16, hwnd, nullptr, nullptr, nullptr);
         };
         auto mkVal = [&](int y) -> HWND {
-            return CreateWindowW(L"STATIC", L"0.00", WS_CHILD | WS_VISIBLE | SS_RIGHT, 250, y, 42, 16, hwnd, nullptr, nullptr, nullptr);
+            return CreateWindowW(L"STATIC", L"0.00", WS_CHILD | WS_VISIBLE | SS_RIGHT, 266, y, 46, 16, hwnd, nullptr, nullptr, nullptr);
         };
         auto mkTb = [&](int id, int y) -> HWND {
             HWND tb = CreateWindowW(TRACKBAR_CLASSW, nullptr,
                 WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_HORZ,
-                88, y, 158, 24, hwnd, (HMENU)(INT_PTR)id, nullptr, nullptr);
+                88, y, 175, 24, hwnd, (HMENU)(INT_PTR)id, nullptr, nullptr);
             SendMessageW(tb, TBM_SETRANGE, TRUE, MAKELPARAM(0, 1000));
             return tb;
         };
@@ -418,10 +418,10 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     if (!RegisterClassExW(&cwc)) { APP_ERR(L"RegisterClass CtrlWnd FAILED"); return 1; }
     gCtrlWnd = CreateWindowExW(0, L"WLGCtrl", L"Controls",
         WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
-        0, 0, 300, 520, gMainWnd, nullptr, hInst, nullptr);
+        0, 0, 320, 560, gMainWnd, nullptr, hInst, nullptr);
     if (!gCtrlWnd) { APP_ERR(L"CreateWindow CtrlWnd FAILED"); return 1; }
     APP_LOG(L"CtrlWnd created: hwnd=%p", gCtrlWnd);
-    SetWindowPos(gCtrlWnd, nullptr, sw - 320, sh / 2 - 260, 300, 520, SWP_NOZORDER);
+    SetWindowPos(gCtrlWnd, nullptr, sw - 340, sh / 2 - 280, 320, 560, SWP_NOZORDER);
 
     UpdUI();
 
