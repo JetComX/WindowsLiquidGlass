@@ -17,7 +17,9 @@
 
 ---
 
-![Screenshot](demopicture/demo_preview.gif)
+![Screenshot](demopicture/demo.png)
+
+<p align="center"><a href="https://github.com/JetComX/WindowsLiquidGlass/blob/main/demopicture/demo_preview.gif?raw=true"> Watch Animated Demo (GIF)</a></p>
 
 ---
 
@@ -211,7 +213,9 @@ If this project helps you, please give it a Star ⭐ — it means the world to o
 
 ---
 
-![Screenshot](demopicture/demo_preview.gif)
+![Screenshot](demopicture/demo.png)
+
+<p align="center"><a href="https://github.com/JetComX/WindowsLiquidGlass/blob/main/demopicture/demo_preview.gif?raw=true"> Watch Animated Demo (GIF)</a></p>
 
 ---
 
