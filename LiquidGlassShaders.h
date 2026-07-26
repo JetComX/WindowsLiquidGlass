@@ -54,7 +54,7 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
 
 static const char* BlurH_PS = R"(
 Texture2D inputTex : register(t0); SamplerState s0 : register(s0);
-cbuffer BlurCB : register(b0) { float2 texelSize; int kernelRadius; float sigma; };
+cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); };
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 coord = svpos.xy * texelSize;
     float sumW = 1.0;
@@ -72,7 +72,7 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
 
 static const char* BlurV_PS = R"(
 Texture2D inputTex : register(t0); SamplerState s0 : register(s0);
-cbuffer BlurCB : register(b0) { float2 texelSize; int kernelRadius; float sigma; };
+cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); };
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 coord = svpos.xy * texelSize;
     float sumW = 1.0;
@@ -192,8 +192,14 @@ static const char* HighlightPS = R"(
 Texture2D t0 : register(t0); SamplerState s0 : register(s0);
 )" SDF_COMMON_HLSL R"(
 cbuffer HighlightCB : register(b0) {
-    float2 elementPos; float2 elementSize; float4 cornerRadii;
-    float4 highlightColor; float angle; float falloff; float highlightWidth; float padding;
+    float2 elementPos     : packoffset(c0.x);
+    float2 elementSize    : packoffset(c0.z);
+    float4 cornerRadii    : packoffset(c1);
+    float4 highlightColor : packoffset(c2);
+    float angle           : packoffset(c3.x);
+    float falloff         : packoffset(c3.y);
+    float highlightWidth  : packoffset(c3.z);
+    float padding         : packoffset(c3.w);
 };
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 pc = svpos.xy;
@@ -215,9 +221,14 @@ static const char* ShadowPS = R"(
 Texture2D t0 : register(t0); SamplerState s0 : register(s0);
 )" SDF_COMMON_HLSL R"(
 cbuffer ShadowCB : register(b0) {
-    float2 elementPos; float2 elementSize; float4 cornerRadii;
-    float2 shadowOffset; float shadowBlur; float padding1;
-    float4 shadowColor; float padding2;
+    float2 elementPos   : packoffset(c0.x);
+    float2 elementSize  : packoffset(c0.z);
+    float4 cornerRadii  : packoffset(c1);
+    float2 shadowOffset : packoffset(c2.x);
+    float shadowBlur    : packoffset(c2.z);
+    float padding1      : packoffset(c2.w);
+    float4 shadowColor  : packoffset(c3);
+    float padding2      : packoffset(c4.x);
 };
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 pc = svpos.xy + shadowOffset;
@@ -232,7 +243,7 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
 
 static const char* ImageCopyPS = R"(
 Texture2D inputTex : register(t0); SamplerState s0 : register(s0);
-cbuffer ImageCB : register(b0) { float2 imageSize; float2 screenSize; };
+cbuffer ImageCB : register(b0) { float2 imageSize : packoffset(c0.x); float2 screenSize : packoffset(c0.z); };
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float scale = max(screenSize.x/imageSize.x, screenSize.y/imageSize.y);
     float2 visUV = screenSize / (imageSize * scale);
