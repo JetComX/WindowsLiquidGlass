@@ -40,18 +40,6 @@ VSOutput main(uint id : SV_VertexID) {
 }
 )";
 
-static const char* BackgroundPS = R"(
-Texture2D inputTex : register(t0); SamplerState s0 : register(s0);
-cbuffer BgCB : register(b0) { float2 screenSize; float time; float padding; };
-float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
-    float2 uvCoord = svpos.xy / screenSize;
-    float3 bgColor = lerp(float3(0.18,0.12,0.28), float3(0.08,0.18,0.35), uvCoord.x*0.7+uvCoord.y*0.3);
-    float glowDist = length(float2(uvCoord.x-0.5, uvCoord.y-0.15)) / 0.7;
-    bgColor += float3(0.22,0.10,0.03) * exp(-glowDist*2.5) * 0.6;
-    return float4(bgColor, 1.0);
-}
-)";
-
 static const char* BlurH_PS = R"(
 Texture2D inputTex : register(t0); SamplerState s0 : register(s0);
 cbuffer BlurCB : register(b0) { float2 texelSize : packoffset(c0.x); int kernelRadius : packoffset(c0.z); float sigma : packoffset(c0.w); };
@@ -246,13 +234,3 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
 }
 )";
 
-static const char* DebugSolidPS = R"(
-)" SDF_COMMON_HLSL R"(
-cbuffer SolidCB : register(b0) { float2 ep; float2 es; float4 cr; float4 sc; };
-float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
-    float2 hs = es * 0.5; float2 cc = svpos.xy - ep - hs;
-    float sd = sdRoundedRect(cc, hs, radiusAt(cc, cr));
-    if (sd > 0.0) discard;
-    return sc;
-}
-)";

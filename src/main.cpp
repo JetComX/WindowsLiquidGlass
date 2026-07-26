@@ -40,12 +40,8 @@ enum CID {
     ID_DISP, ID_DEPTH, ID_WHITE, ID_IMAGE, ID_CONSOLE, ID_RESET,
     ID_COLOR0, ID_COLOR9=ID_COLOR0+9
 };
-static const wchar_t* kIdNames[] = {
-    nullptr, nullptr, nullptr, nullptr, nullptr,  // 0-4 unused
-    nullptr, nullptr, nullptr, nullptr, nullptr,  // 5-9 unused
-    // ... up to 100
-};
-// Initialize on first use
+
+
 static const wchar_t* GetIdName(int id) {
     switch (id) {
     case ID_BLUR:   return L"BLUR";

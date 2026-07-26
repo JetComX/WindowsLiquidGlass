@@ -85,7 +85,7 @@ bool DemoApp::Init(HINSTANCE hInst, int nShow) {
         WS_OVERLAPPEDWINDOW, (sw-m_w)/2, (sh-m_h)/2, m_w, m_h,
         nullptr, nullptr, hInst, nullptr);
     if (!m_hwnd) return false;
-    SetWindowDisplayAffinity(m_hwnd, WDA_EXCLUDEFROMCAPTURE);
+
 
     // Renderer
     printf("Init renderer...\n");
@@ -191,10 +191,10 @@ void DemoApp::DrawUI() {
     ImGui::SliderFloat("Corner Radius", &m_cfg.cornerRadius, 0.f, 80.f, "%.0f");
     ImGui::SliderFloat("Saturation", &m_cfg.saturation, 1.f, 2.f, "%.2f");
     ImGui::Separator();
-    ImGui::Checkbox("Dispersion", &m_cfg.chromaticAberration);
+    ImGui::SliderFloat("Dispersion", &m_cfg.dispersion, 0.f, 1.f, "%.2f");
     ImGui::SameLine();
     ImGui::Checkbox("Depth Effect", &m_cfg.depthEffect);
-    ImGui::SliderFloat("Highlight", &m_cfg.highlightAlpha, 0.f, 1.f, "%.2f");
+    // Highlight slider removed (feature not yet re-implemented)
     ImGui::Separator();
 
     ImGui::Text("Background:");

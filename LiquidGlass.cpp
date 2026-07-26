@@ -64,10 +64,10 @@ struct Renderer::Impl {
     float bgCol[3]={1,1,1}; bool hasBgCol=false;
     GlassConfig cfg; // 内部参数（链式 setter 修改此值）
     ComPtr<ID3D11VertexShader> vs;
-    ComPtr<ID3D11PixelShader> blurH,blurV,refr,disp,hl,shd,img,copy;
+    ComPtr<ID3D11PixelShader> blurH,blurV,refr,disp,shd,img,copy;
     ComPtr<ID3D11SamplerState> samp;
-    ComPtr<ID3D11BlendState> alphaBlend,addBlend;
-    ComPtr<ID3D11Buffer> cbBlur,cbGlass,cbHL,cbShd,cbImg;
+    ComPtr<ID3D11BlendState> alphaBlend;
+    ComPtr<ID3D11Buffer> cbBlur,cbGlass,cbShd,cbImg;
     ComPtr<ID3D11InfoQueue> iq;
     static constexpr int KR=15;
 
@@ -165,16 +165,16 @@ bool Renderer::Init(HWND hwnd,int w,int h){
     m->bgRT.Create(m->device.Get(),w,h);m->blurHRT.Create(m->device.Get(),w,h);m->blurVRT.Create(m->device.Get(),w,h);
     LG_LOG("RTs created: bg blrH blrV %dx%d",w,h);
     ComPtr<ID3DBlob> vb;D3DCompile(FullscreenVS,strlen(FullscreenVS),nullptr,nullptr,nullptr,"main","vs_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,vb.GetAddressOf(),nullptr);m->device->CreateVertexShader(vb->GetBufferPointer(),vb->GetBufferSize(),nullptr,m->vs.GetAddressOf());
-    m->blurH=m->CompilePS(BlurH_PS,"BlurH");m->blurV=m->CompilePS(BlurV_PS,"BlurV");m->refr=m->CompilePS(GlassRefractionPS,"Refr");m->disp=m->CompilePS(GlassDispersionPS,"Disp");m->hl=m->CompilePS(HighlightPS,"Highl");m->shd=m->CompilePS(ShadowPS,"Shadow");m->img=m->CompilePS(ImageCopyPS,"Image");m->copy=m->CompilePS(PassthroughPS,"Passthru");
+    m->blurH=m->CompilePS(BlurH_PS,"BlurH");m->blurV=m->CompilePS(BlurV_PS,"BlurV");m->refr=m->CompilePS(GlassRefractionPS,"Refr");m->disp=m->CompilePS(GlassDispersionPS,"Disp");m->shd=m->CompilePS(ShadowPS,"Shadow");m->img=m->CompilePS(ImageCopyPS,"Image");m->copy=m->CompilePS(PassthroughPS,"Passthru");
     if(!m->blurH||!m->blurV||!m->refr||!m->disp||!m->hl||!m->shd||!m->img||!m->copy){LG_ERR("Shader compilation failed");return false;}
     LG_LOG("All 8 shaders OK");
     D3D11_SAMPLER_DESC sm={};sm.Filter=D3D11_FILTER_MIN_MAG_MIP_LINEAR;sm.AddressU=sm.AddressV=sm.AddressW=D3D11_TEXTURE_ADDRESS_CLAMP;m->device->CreateSamplerState(&sm,m->samp.GetAddressOf());
     D3D11_BLEND_DESC bd={};bd.RenderTarget[0].BlendEnable=TRUE;bd.RenderTarget[0].SrcBlend=D3D11_BLEND_SRC_ALPHA;bd.RenderTarget[0].DestBlend=D3D11_BLEND_INV_SRC_ALPHA;bd.RenderTarget[0].BlendOp=D3D11_BLEND_OP_ADD;bd.RenderTarget[0].SrcBlendAlpha=D3D11_BLEND_ONE;bd.RenderTarget[0].DestBlendAlpha=D3D11_BLEND_ONE;bd.RenderTarget[0].BlendOpAlpha=D3D11_BLEND_OP_ADD;bd.RenderTarget[0].RenderTargetWriteMask=D3D11_COLOR_WRITE_ENABLE_ALL;m->device->CreateBlendState(&bd,m->alphaBlend.GetAddressOf());
-    bd.RenderTarget[0].SrcBlend=D3D11_BLEND_ONE;bd.RenderTarget[0].DestBlend=D3D11_BLEND_ONE;m->device->CreateBlendState(&bd,m->addBlend.GetAddressOf());
     D3D11_BUFFER_DESC cbd={};cbd.Usage=D3D11_USAGE_DEFAULT;cbd.BindFlags=D3D11_BIND_CONSTANT_BUFFER;
     cbd.ByteWidth=sizeof(BlurCB);m->device->CreateBuffer(&cbd,nullptr,m->cbBlur.GetAddressOf());
     cbd.ByteWidth=sizeof(GlassCB);m->device->CreateBuffer(&cbd,nullptr,m->cbGlass.GetAddressOf());
-    cbd.ByteWidth=sizeof(HighlightCB);m->device->CreateBuffer(&cbd,nullptr,m->cbHL.GetAddressOf());
+
+
     cbd.ByteWidth=sizeof(ShadowCB);m->device->CreateBuffer(&cbd,nullptr,m->cbShd.GetAddressOf());
     cbd.ByteWidth=sizeof(ImageCB);m->device->CreateBuffer(&cbd,nullptr,m->cbImg.GetAddressOf());
     LG_LOG("Init complete %dx%d",w,h);
