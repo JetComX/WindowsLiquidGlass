@@ -94,7 +94,7 @@ Texture2D blurTex : register(t0); SamplerState s0 : register(s0);
 cbuffer GlassCB : register(b0) {
     float2 elementPos; float2 elementSize; float4 cornerRadii;
     float2 screenSizeInv; float refractionHeight; float refractionAmount;
-    float depthEffect; float saturation; float padding;
+    float depthEffect; float saturation; float dispersion;
 };
 static const float3 lumVec = float3(0.213, 0.715, 0.072);
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
@@ -132,7 +132,7 @@ Texture2D blurTex : register(t0); SamplerState s0 : register(s0);
 cbuffer GlassCB : register(b0) {
     float2 elementPos; float2 elementSize; float4 cornerRadii;
     float2 screenSizeInv; float refractionHeight; float refractionAmount;
-    float depthEffect; float saturation; float padding;
+    float depthEffect; float saturation; float dispersion;
 };
 static const float3 lumVec = float3(0.213, 0.715, 0.072);
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
@@ -158,7 +158,7 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 rp = pc + d * grad;
     float2 ruv = rp * screenSizeInv;
     float disp = (cc.x * cc.y) / (hs.x * hs.y);
-    float2 doff = d * grad * disp * screenSizeInv;
+    float2 doff = d * grad * disp * screenSizeInv * dispersion;
     float4 color = float4(0,0,0,0);
     float4 s;
     s = blurTex.SampleLevel(s0, ruv + doff, 0); color.r+=s.r/3.5; color.a+=s.a/7.0;

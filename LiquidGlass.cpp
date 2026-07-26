@@ -52,7 +52,7 @@ struct RT {
 
 struct alignas(16) BlurCB{float tsX,tsY;int kr;float sigma;};
 struct alignas(16) ImageCB{float iw,ih,sw,sh;};
-struct alignas(16) GlassCB{float px,py,sx,sy;float cr[4];float siX,siY;float rh,ra;float de,sat;float pad;};
+struct alignas(16) GlassCB{float px,py,sx,sy;float cr[4];float siX,siY;float rh,ra;float de,sat;float disp;};
 struct alignas(16) HighlightCB{float px,py,sx,sy;float cr[4],hc[4];float angle,falloff,hw,pad;};
 struct alignas(16) ShadowCB{float px,py,sx,sy;float cr[4],so[2];float sb,p1;float sc[4],p2;};
 
@@ -219,13 +219,14 @@ bool Renderer::LoadBackgroundImage(const wchar_t*p){
 void Renderer::ClearBackground(){LG_LOG("ClearBackground");m->bgImg.Reset();m->hasBgCol=false;}
 
 // ---- 玻璃参数 setter（链式调用，返回 *this） ----
-Renderer& Renderer::Blur(float s)            { m->cfg.blurSigma = s; return *this; }
-Renderer& Renderer::Saturation(float s)      { m->cfg.saturation = s; return *this; }
-Renderer& Renderer::Refraction(float a)      { m->cfg.refractionAmount = a; return *this; }
-Renderer& Renderer::Radius(float r)          { m->cfg.cornerRadius = r; return *this; }
-Renderer& Renderer::Dispersion(bool on)      { m->cfg.chromaticAberration = on; return *this; }
-Renderer& Renderer::Depth(bool on)           { m->cfg.depthEffect = on; return *this; }
-Renderer& Renderer::Config(const GlassConfig& c) { m->cfg = c; return *this; }
+Renderer& Renderer::Blur(float s)               { LG_LOG("Set Blur=%.2f",s); m->cfg.blurSigma = s; return *this; }
+Renderer& Renderer::Saturation(float s)         { LG_LOG("Set Saturation=%.2f",s); m->cfg.saturation = s; return *this; }
+Renderer& Renderer::RefractionHeight(float h)    { LG_LOG("Set RefractionHeight=%.0f",h); m->cfg.refractionHeight = h; return *this; }
+Renderer& Renderer::RefractionAmount(float a)    { LG_LOG("Set RefractionAmount=%.0f",a); m->cfg.refractionAmount = a; return *this; }
+Renderer& Renderer::Radius(float r)             { LG_LOG("Set Radius=%.0f",r); m->cfg.cornerRadius = r; return *this; }
+Renderer& Renderer::Dispersion(float intensity) { LG_LOG("Set Dispersion=%.2f",intensity); m->cfg.dispersion = intensity; return *this; }
+Renderer& Renderer::Depth(bool on)              { LG_LOG("Set Depth=%d",on); m->cfg.depthEffect = on; return *this; }
+Renderer& Renderer::Config(const GlassConfig& c){ LG_LOG("Set Config(bulk)"); m->cfg = c; return *this; }
 
 // 使用内部已设置的参数
 void Renderer::RenderGlass(float x,float y,float w,float h){
@@ -237,8 +238,8 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
     static int callCount=0;
     callCount++;
     if(callCount==1)
-        LG_LOG("RenderGlass pos=(%.0f,%.0f) size=%.0fx%.0f blur=%.1f refr=%.0f r=%.0f sat=%.2f disp=%d depth=%d",
-            x,y,w,h,c.blurSigma,c.refractionAmount,c.cornerRadius,c.saturation,c.chromaticAberration,c.depthEffect);
+        LG_LOG("RenderGlass pos=(%.0f,%.0f) size=%.0fx%.0f blur=%.1f refrH=%.0f refrA=%.0f r=%.0f sat=%.2f disp=%.2f depth=%d",
+            x,y,w,h,c.blurSigma,c.refractionHeight,c.refractionAmount,c.cornerRadius,c.saturation,c.dispersion,c.depthEffect);
     // Blur pass
     BlurCB bcb={1.f/g->width,1.f/g->height,Impl::KR,c.blurSigma};
     g->ctx->UpdateSubresource(g->cbBlur.Get(),0,nullptr,&bcb,0,0);
@@ -259,7 +260,7 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
     }
     g->SetRT(g->glassRT,0,0,0,0); // transparent clear
     float r=c.cornerRadius,rad[4]={r,r,r,r};
-    GlassCB gc={x,y,w,h,{rad[0],rad[1],rad[2],rad[3]},1.f/g->width,1.f/g->height,c.refractionHeight,c.refractionAmount,c.depthEffect?1.f:0,c.saturation,0};
+    GlassCB gc={x,y,w,h,{rad[0],rad[1],rad[2],rad[3]},1.f/g->width,1.f/g->height,c.refractionHeight,c.refractionAmount,c.depthEffect?1.f:0,c.saturation,c.dispersion};
     g->ctx->UpdateSubresource(g->cbGlass.Get(),0,nullptr,&gc,0,0);
     // 1. Shadow pass (alpha blend to glassRT)
     ShadowCB sc={x,y,w,h,{rad[0],rad[1],rad[2],rad[3]},{0,6},20.f,0,{0,0,0,.30f},0};
@@ -270,7 +271,7 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
     g->DrawFS();
     // 2. Glass body pass (alpha blend, reads blurVRT)
     g->ctx->PSSetConstantBuffers(0,1,g->cbGlass.GetAddressOf());
-    g->ctx->PSSetShader(c.chromaticAberration?g->disp.Get():g->refr.Get(),nullptr,0);
+    g->ctx->PSSetShader(c.dispersion>0.0f?g->disp.Get():g->refr.Get(),nullptr,0);
     g->ctx->PSSetShaderResources(0,1,g->blurVRT.srv.GetAddressOf());
     g->DrawFS();
     // 3. Composite pass (alpha blend glassRT -> backbuffer)
@@ -282,12 +283,17 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
     g->DrawFS();
     g->ctx->OMSetBlendState(nullptr,bf,0xFFFFFFFF);
     if(callCount<=3){
-        LG_LOG("Pipeline done: blur->shadow->glass->composite all executed");
-        LG_LOG("  bg=(img=%d col=%d) bgCol=(%.2f,%.2f,%.2f) imgSize=%dx%d",
+        LG_LOG("=== Pipeline step-by-step ===");
+        LG_LOG("  1.Blur: sigma=%.1f kernelRadius=%d bgRT(%dx%d)->blurHRT->blurVRT",
+            c.blurSigma,Impl::KR,g->bgRT.w,g->bgRT.h);
+        LG_LOG("  2.Shadow: offset=(0,6) blur=20 alpha=0.30");
+        LG_LOG("  3.GlassBody: refrH=%.0f refrA=%.0f sat=%.2f disp=%.2f depth=%d",
+            c.refractionHeight,c.refractionAmount,c.saturation,c.dispersion,c.depthEffect);
+        LG_LOG("  4.Composite: glassRT(%dx%d)->backbuffer(%dx%d) blend=alpha",
+            g->glassRT.w,g->glassRT.h,g->backbuffer.w,g->backbuffer.h);
+        LG_LOG("  BG: img=%d col=%d colVal=(%.2f,%.2f,%.2f) imgSize=%dx%d",
             g->bgImg!=nullptr,g->hasBgCol,g->bgCol[0],g->bgCol[1],g->bgCol[2],g->bgImgW,g->bgImgH);
-        LG_LOG("  glass pos=(%.0f,%.0f) size=%.0fx%.0f radius=%.0f",x,y,w,h,c.cornerRadius);
-        LG_LOG("  RT sizes: bb=%dx%d bg=%dx%d blr=%dx%d glass=%dx%d",
-            g->backbuffer.w,g->backbuffer.h,g->bgRT.w,g->bgRT.h,g->blurVRT.w,g->blurVRT.h,g->glassRT.w,g->glassRT.h);
+        LG_LOG("  Glass: pos=(%.0f,%.0f) size=%.0fx%.0f radius=%.0f",x,y,w,h,c.cornerRadius);
     }
 }
 ID3D11Device* Renderer::GetDevice()const{return m->device.Get();}

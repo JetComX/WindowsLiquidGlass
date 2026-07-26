@@ -32,7 +32,7 @@
 // Control IDs
 // ============================================================================
 enum CID {
-    ID_BLUR=100, ID_REFR, ID_RADIUS, ID_SAT,
+    ID_BLUR=100, ID_REFR, ID_REFRH, ID_RADIUS, ID_SAT,
     ID_DISP, ID_DEPTH, ID_WHITE, ID_IMAGE, ID_CONSOLE, ID_RESET,
     ID_COLOR0, ID_COLOR9=ID_COLOR0+9
 };
@@ -46,6 +46,7 @@ static const wchar_t* GetIdName(int id) {
     switch (id) {
     case ID_BLUR:   return L"BLUR";
     case ID_REFR:   return L"REFR";
+    case ID_REFRH:  return L"REFRH";
     case ID_RADIUS: return L"RADIUS";
     case ID_SAT:    return L"SAT";
     case ID_DISP:   return L"DISP";
@@ -71,7 +72,7 @@ static LiquidGlass::Renderer     gR;
 static LiquidGlass::GlassConfig  gCfg;
 static float    gGX, gGY, gGW, gGH;    // glass position & size
 static HWND     gMainWnd, gCtrlWnd;
-static HWND     gBlur, gRefr, gRadius, gSat;
+static HWND     gBlur, gRefr, gRefrH, gRadius, gSat, gDisp;
 static HWND     gDisp, gDepth, gWhite, gImg, gConsoleBtn, gReset;
 static HWND     gColorBtns[10];
 static int      gW, gH, gMx, gMy;
@@ -136,11 +137,11 @@ static void SetTB(HWND tb, float v, float mn, float mx) {
 static void UpdUI() {
     SetTB(gBlur,    gCfg.blurSigma,         0.1f, 30.0f);
     SetTB(gRefr,    gCfg.refractionAmount,  4.0f,  120.0f);
+    SetTB(gRefrH,   gCfg.refractionHeight,  4.0f,  60.0f);
     SetTB(gRadius,  gCfg.cornerRadius,      0.0f,  80.0f);
     SetTB(gSat,     gCfg.saturation,        1.0f,  2.0f);
-
-    SendMessageW(gDisp,  BM_SETCHECK, gCfg.chromaticAberration ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessageW(gDepth, BM_SETCHECK, gCfg.depthEffect        ? BST_CHECKED : BST_UNCHECKED, 0);
+    SetTB(gDisp,    gCfg.dispersion,        0.0f,  1.0f);
+    SendMessageW(gDepth, BM_SETCHECK, gCfg.depthEffect ? BST_CHECKED : BST_UNCHECKED, 0);
 }
 
 // ============================================================================
@@ -166,12 +167,13 @@ LRESULT CALLBACK CtrlWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return tb;
         };
         int y = 10;
-        mkLbl(L"Blur", y);        gBlur   = mkTb(ID_BLUR, y);   y += 26;
-        mkLbl(L"Refraction", y);  gRefr   = mkTb(ID_REFR, y);   y += 26;
-        mkLbl(L"Radius", y);      gRadius = mkTb(ID_RADIUS, y); y += 26;
-        mkLbl(L"Saturation", y);  gSat    = mkTb(ID_SAT, y);    y += 28;
+        mkLbl(L"Blur", y);             gBlur   = mkTb(ID_BLUR, y);   y += 26;
+        mkLbl(L"Refr Amount", y);      gRefr   = mkTb(ID_REFR, y);   y += 26;
+        mkLbl(L"Refr Height", y);      gRefrH  = mkTb(ID_REFRH, y);  y += 26;
+        mkLbl(L"Radius", y);           gRadius = mkTb(ID_RADIUS, y); y += 26;
+        mkLbl(L"Saturation", y);       gSat    = mkTb(ID_SAT, y);    y += 26;
+        mkLbl(L"Dispersion", y);       gDisp   = mkTb(ID_DISP, y);   y += 28;
 
-        gDisp  = CreateWindowW(L"BUTTON", L"Dispersion",   WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 12, y, 140, 20, hwnd, (HMENU)(INT_PTR)ID_DISP,  nullptr, nullptr); y += 22;
         gDepth = CreateWindowW(L"BUTTON", L"Depth Effect",  WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 12, y, 140, 20, hwnd, (HMENU)(INT_PTR)ID_DEPTH, nullptr, nullptr); y += 28;
 
         for (int i = 0; i < 10; i++) {
@@ -200,8 +202,10 @@ LRESULT CALLBACK CtrlWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         switch (id) {
         case ID_BLUR:   val=gCfg.blurSigma=GetTB(gBlur,0.1f,30.0f); break;
         case ID_REFR:   val=gCfg.refractionAmount=GetTB(gRefr,4.0f,120.0f); break;
+        case ID_REFRH:  val=gCfg.refractionHeight=GetTB(gRefrH,4.0f,60.0f); break;
         case ID_RADIUS: val=gCfg.cornerRadius=GetTB(gRadius,0.0f,80.0f); break;
         case ID_SAT:    val=gCfg.saturation=GetTB(gSat,1.0f,2.0f); break;
+        case ID_DISP:   val=gCfg.dispersion=GetTB(gDisp,0.0f,1.0f); break;
 
         }
         APP_LOG(L"Slider %s = %.2f", GetIdName(id), val);
@@ -217,10 +221,6 @@ LRESULT CALLBACK CtrlWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             gR.SetBackgroundColor(kColors[i][0], kColors[i][1], kColors[i][2]);
         }
         switch (id) {
-        case ID_DISP:
-            gCfg.chromaticAberration = (SendMessageW(gDisp, BM_GETCHECK, 0, 0) == BST_CHECKED);
-            APP_LOG(L"  -> chromaticAberration = %d", gCfg.chromaticAberration);
-            break;
         case ID_DEPTH:
             gCfg.depthEffect = (SendMessageW(gDepth, BM_GETCHECK, 0, 0) == BST_CHECKED);
             APP_LOG(L"  -> depthEffect = %d", gCfg.depthEffect);
@@ -379,7 +379,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
         nullptr, nullptr, hInst, nullptr);
     if (!gMainWnd) { APP_ERR(L"CreateWindow MainWnd FAILED"); return 1; }
     APP_LOG(L"MainWnd created: hwnd=%p", gMainWnd);
-    SetWindowDisplayAffinity(gMainWnd, WDA_EXCLUDEFROMCAPTURE);
+
 
     // Renderer
     APP_LOG(L"Initializing renderer...");
@@ -399,7 +399,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     APP_LOG(L"Glass initial: pos=(%.0f,%.0f) size=%.0f", gGX, gGY, gGW);
     APP_LOG(L"GlassConfig: blur=%.1f refr=%.0f r=%.0f sat=%.2f hl=%.2f disp=%d depth=%d",
         gCfg.blurSigma, gCfg.refractionAmount, gCfg.cornerRadius,
-        gCfg.saturation, gCfg.chromaticAberration, gCfg.depthEffect);
+        gCfg.saturation, gCfg.dispersion, gCfg.depthEffect);
 
     // Control window
     WNDCLASSEXW cwc = {sizeof(cwc), 0, CtrlWndProc, 0, 0, hInst,

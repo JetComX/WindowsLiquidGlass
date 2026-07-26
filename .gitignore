@@ -29,6 +29,9 @@ Release/
 */Release/
 WindowsL.*/
 
+# Archives
+*.zip
+
 # IDE
 *.sln
 *.slnx

@@ -67,7 +67,7 @@ LiquidGlass::Renderer glass;
 
 // Init
 glass.Init(hwnd, width, height);
-glass.Blur(12).Radius(40).Saturation(1.5f).Refraction(50);
+glass.Blur(12).Radius(40).Saturation(1.5f).RefractionAmount(50).RefractionHeight(30);
 glass.SetBackgroundColor(1, 1, 1);
 
 // Per frame — just 3 lines
@@ -101,9 +101,10 @@ glass.EndFrame();
 |--------|-------|---------|-------------|
 | `Blur(sigma)` | 0.1 ~ 30 | 12 | Gaussian blur amount |
 | `Saturation(s)` | 1.0 ~ 2.0 | 1.5 | Color vibrancy |
-| `Refraction(amount)` | 4 ~ 120 | 50 | Refraction distortion |
+| `RefractionAmount(a)` | 4 ~ 120 | 50 | Refraction strength |
+| `RefractionHeight(h)` | 4 ~ 60 | 30 | Lens thickness (px) |
 | `Radius(r)` | 0 ~ 80 | 40 | Corner roundness |
-| `Dispersion(on)` | bool | true | RGB chromatic aberration |
+| `Dispersion(intensity)` | 0.0 ~ 1.0 | 1.0 | Chromatic aberration |
 | `Depth(on)` | bool | true | Depth-based refraction |
 | `Config(cfg)` | GlassConfig | — | Set all params at once |
 
@@ -205,7 +206,7 @@ LiquidGlass::Renderer glass;
 
 // 初始化
 glass.Init(hwnd, width, height);
-glass.Blur(12).Radius(40).Saturation(1.5f).Refraction(50);
+glass.Blur(12).Radius(40).Saturation(1.5f).RefractionAmount(50).RefractionHeight(30);
 glass.SetBackgroundColor(1, 1, 1);
 
 // 每帧 —— 只需 3 行
@@ -239,9 +240,10 @@ glass.EndFrame();
 |------|------|--------|------|
 | `Blur(sigma)` | 0.1 ~ 30 | 12 | 高斯模糊量 |
 | `Saturation(s)` | 1.0 ~ 2.0 | 1.5 | 色彩饱和度 |
-| `Refraction(amount)` | 4 ~ 120 | 50 | 折射扭曲强度 |
+| `RefractionAmount(a)` | 4 ~ 120 | 50 | 折射扭曲强度 |
+| `RefractionHeight(h)` | 4 ~ 60 | 30 | 折射厚度（像素） |
 | `Radius(r)` | 0 ~ 80 | 40 | 圆角半径 |
-| `Dispersion(on)` | bool | true | RGB 色散效果 |
+| `Dispersion(intensity)` | 0.0 ~ 1.0 | 1.0 | 色散强度 |
 | `Depth(on)` | bool | true | 深度折射渐变 |
 | `Config(cfg)` | GlassConfig | — | 一次性设置全部参数 |
 
