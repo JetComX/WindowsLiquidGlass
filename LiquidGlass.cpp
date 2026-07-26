@@ -262,6 +262,13 @@ void Renderer::RenderGlass(float x,float y,float w,float h,const GlassConfig&c){
     float r=c.cornerRadius,rad[4]={r,r,r,r};
     GlassCB gc={x,y,w,h,{rad[0],rad[1],rad[2],rad[3]},1.f/g->width,1.f/g->height,c.refractionHeight,c.refractionAmount,c.depthEffect?1.f:0,c.saturation,c.dispersion};
     g->ctx->UpdateSubresource(g->cbGlass.Get(),0,nullptr,&gc,0,0);
+    if(callCount<=3){
+        LG_LOG("GlassCB upload: pos=(%.0f,%.0f) size=(%.0f,%.0f) radii=(%.0f,%.0f,%.0f,%.0f)",
+            gc.px,gc.py,gc.sx,gc.sy,gc.cr[0],gc.cr[1],gc.cr[2],gc.cr[3]);
+        LG_LOG("GlassCB upload: screenInv=(%.6f,%.6f) refrH=%.1f refrA=%.1f depth=%.1f sat=%.2f disp=%.2f",
+            gc.siX,gc.siY,gc.rh,gc.ra,gc.de,gc.sat,gc.disp);
+        LG_LOG("GlassCB upload: sizeof(GlassCB)=%zu bytes",sizeof(GlassCB));
+    }
     // 1. Shadow pass (alpha blend to glassRT)
     ShadowCB sc={x,y,w,h,{rad[0],rad[1],rad[2],rad[3]},{0,6},20.f,0,{0,0,0,.30f},0};
     g->ctx->UpdateSubresource(g->cbShd.Get(),0,nullptr,&sc,0,0);

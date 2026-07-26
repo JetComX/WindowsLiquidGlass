@@ -92,9 +92,15 @@ static const char* GlassRefractionPS = R"(
 Texture2D blurTex : register(t0); SamplerState s0 : register(s0);
 )" SDF_COMMON_HLSL R"(
 cbuffer GlassCB : register(b0) {
-    float2 elementPos; float2 elementSize; float4 cornerRadii;
-    float2 screenSizeInv; float refractionHeight; float refractionAmount;
-    float depthEffect; float saturation; float dispersion;
+    float2 elementPos      : packoffset(c0.x);
+    float2 elementSize     : packoffset(c0.z);
+    float4 cornerRadii     : packoffset(c1);
+    float2 screenSizeInv   : packoffset(c2.x);
+    float refractionHeight : packoffset(c2.z);
+    float refractionAmount : packoffset(c2.w);
+    float depthEffect      : packoffset(c3.x);
+    float saturation       : packoffset(c3.y);
+    float dispersion       : packoffset(c3.z);
 };
 static const float3 lumVec = float3(0.213, 0.715, 0.072);
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
@@ -130,9 +136,15 @@ static const char* GlassDispersionPS = R"(
 Texture2D blurTex : register(t0); SamplerState s0 : register(s0);
 )" SDF_COMMON_HLSL R"(
 cbuffer GlassCB : register(b0) {
-    float2 elementPos; float2 elementSize; float4 cornerRadii;
-    float2 screenSizeInv; float refractionHeight; float refractionAmount;
-    float depthEffect; float saturation; float dispersion;
+    float2 elementPos      : packoffset(c0.x);
+    float2 elementSize     : packoffset(c0.z);
+    float4 cornerRadii     : packoffset(c1);
+    float2 screenSizeInv   : packoffset(c2.x);
+    float refractionHeight : packoffset(c2.z);
+    float refractionAmount : packoffset(c2.w);
+    float depthEffect      : packoffset(c3.x);
+    float saturation       : packoffset(c3.y);
+    float dispersion       : packoffset(c3.z);
 };
 static const float3 lumVec = float3(0.213, 0.715, 0.072);
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
