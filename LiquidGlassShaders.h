@@ -111,12 +111,7 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float sd = sdRoundedRect(cc, hs, r);
     float edgeAA = 1.0 - smoothstep(-1.0, 1.0, sd);
     if (edgeAA < 0.001) discard;
-    sd = min(sd, 0.0);
-    float t = saturate(1.0 - (-sd / refractionHeight));
-    float d = circleMap(t) * refractionAmount;
-    float gr = min(r * 1.5, min(hs.x, hs.y));
-    float2 grad = normalize(gradSdRoundedRect(cc, hs, gr) + depthEffect * normalize(cc));
-    float4 c = blurTex.SampleLevel(s0, (pc + d * grad) * screenSizeInv, 0);
+    float4 c = blurTex.SampleLevel(s0, pc * screenSizeInv, 0);
     float lum = dot(c.rgb, lumVec);
     c.rgb = lerp(float3(lum,lum,lum), c.rgb, saturation);
     c.rgb *= 0.92;
@@ -149,7 +144,8 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float edgeAA = 1.0 - smoothstep(-1.0, 1.0, sd);
     if (edgeAA < 0.001) discard;
     sd = min(sd, 0.0);
-    float d = circleMap(1.0 - (-sd/refractionHeight)) * refractionAmount;
+    float t = saturate(1.0 - (-sd / refractionHeight));
+    float d = circleMap(t) * refractionAmount;
     float gr = min(r * 1.5, min(hs.x, hs.y));
     float2 grad = normalize(gradSdRoundedRect(cc, hs, gr) + depthEffect * normalize(cc));
     float2 rp = pc + d * grad;
@@ -167,7 +163,7 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     s = blurTex.SampleLevel(s0, ruv - doff, 0); color.r+=s.r/7.0; color.b+=s.b/3.0; color.a+=s.a/7.0;
     float lum = dot(color.rgb, lumVec);
     color.rgb = lerp(float3(lum,lum,lum), color.rgb, saturation);
-    color.rgb *= 0.85;
+    color.rgb *= 0.92;
     color.a *= edgeAA;
     return color;
 }
