@@ -17,7 +17,7 @@
 
 ---
 
-![Screenshot](demopicture/demo.png)
+![Screenshot](demopicture/demo.gif)
 
 ---
 
@@ -211,7 +211,7 @@ If this project helps you, please give it a Star ⭐ — it means the world to o
 
 ---
 
-![Screenshot](demopicture/demo.png)
+![Screenshot](demopicture/demo.gif)
 
 ---
 
