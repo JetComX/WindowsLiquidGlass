@@ -9,8 +9,10 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <shellapi.h>
+#include <psapi.h>
 #include <cstdio>
 #include <chrono>
+#include <thread>
 #include <algorithm>
 #include "imgui.h"
 #include "imgui_impl_win32.h"
@@ -32,6 +34,22 @@
     wprintf(L"%s", _b); OutputDebugStringW(_b); \
     MessageBoxW(nullptr, _b, L"Windows Liquid Glass - Error", MB_ICONERROR); \
 } while(0)
+
+// ============================================================================
+// Console control handler — prevent Ctrl+C / close from killing the process
+// ============================================================================
+static BOOL WINAPI ConsoleCtrlHandler(DWORD dwType) {
+    switch (dwType) {
+    case CTRL_C_EVENT:
+        return TRUE; // ignore Ctrl+C
+    case CTRL_CLOSE_EVENT:
+        wprintf(L"\nWhen the debug window shows up, you should hide it from the\n"
+                L"\"Hide Console\" option in the Control Panel!\n");
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
 
 // ============================================================================
 // Globals
@@ -110,29 +128,42 @@ static void DrawUI() {
 
     ImGui::Separator();
     ImGui::SliderFloat("Blur", &gCfg.blurSigma, 0.1f, 30.f, "%.1f");
-    ImGui::SliderFloat("Refr Amount", &gCfg.refractionAmount, 4.f, 120.f, "%.0f");
-    ImGui::SliderFloat("Refr Height", &gCfg.refractionHeight, 4.f, 60.f, "%.0f");
+    static int refrMode = 0;
+    ImGui::Combo("Refr Mode", &refrMode, "Correct (Convex)\0Negative (Concave)\0");
+    if (refrMode == 0) {
+        ImGui::SliderFloat("Refr Amount", &gCfg.refractionCorrect, 0.00f, 0.30f, "%.2f");
+        gCfg.refractionNegative = 0.00f;
+    } else {
+        ImGui::SliderFloat("Refr Amount", &gCfg.refractionNegative, 0.00f, 0.30f, "%.2f");
+        gCfg.refractionCorrect = 0.00f;
+    }
+    ImGui::SliderFloat("Refr Height", &gCfg.refractionHeight, 0.00f, 0.30f, "%.2f");
     ImGui::SliderFloat("Corner Radius", &gCfg.cornerRadius, 0.f, 80.f, "%.0f");
     ImGui::SliderFloat("Saturation", &gCfg.saturation, 1.f, 2.f, "%.2f");
     ImGui::SliderFloat("Dispersion", &gCfg.dispersion, 0.f, 1.f, "%.2f");
+    ImGui::SliderFloat("Highlight", &gCfg.highlightAlpha, 0.f, 0.5f, "%.2f");
+    ImGui::SliderFloat("Darkening", &gCfg.darkening, 0.50f, 1.00f, "%.2f");
+    ImGui::SliderFloat("Shadow Alpha", &gCfg.shadowAlpha, 0.00f, 0.35f, "%.2f");
     ImGui::Checkbox("Depth Effect", &gCfg.depthEffect);
 
     ImGui::Separator();
-    ImGui::Text("Background:");
+    ImGui::Text("Glass Tint:");
     for (int i = 0; i < 10; i++) {
         if (i % 5) ImGui::SameLine();
         ImGui::PushID(i);
         float r = kColors[i][0], g = kColors[i][1], b = kColors[i][2];
         ImGuiColorEditFlags flags = ImGuiColorEditFlags_NoTooltip;
         if (ImGui::ColorButton(kNames[i], ImVec4(r, g, b, 1), flags, ImVec2(24, 24))) {
-            gR.SetBackgroundColor(r, g, b);
-            APP_LOG(L"BG color: %S (%.2f,%.2f,%.2f)", kNames[i], r, g, b);
+            gR.GlassTint(r, g, b, 0.6f);
+            gCfg.glassTintR = r; gCfg.glassTintG = g; gCfg.glassTintB = b; gCfg.glassTintA = 0.6f;
+            APP_LOG(L"Glass tint: %S (%.2f,%.2f,%.2f)", kNames[i], r, g, b);
         }
         ImGui::PopID();
     }
-    if (ImGui::Button("White", ImVec2(-1, 0))) {
-        gR.SetBackgroundColor(1, 1, 1);
-        APP_LOG(L"BG: white");
+    if (ImGui::Button("Clear Tint", ImVec2(-1, 0))) {
+        gR.GlassTint(1, 1, 1, 0);
+        gCfg.glassTintR = 1; gCfg.glassTintG = 1; gCfg.glassTintB = 1; gCfg.glassTintA = 0;
+        APP_LOG(L"Glass tint: cleared");
     }
     if (ImGui::Button("Open Image...", ImVec2(-1, 0))) {
         wchar_t path[MAX_PATH] = {};
@@ -265,9 +296,11 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     APP_LOG(L"========================================");
     APP_LOG(L"  Windows Liquid Glass - Starting");
     APP_LOG(L"========================================");
+    SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
     PrintSystemInfo();
-
-    ShowWindow(GetConsoleWindow(), SW_HIDE);  // Hidden by default
+    // Disable console close button (CTRL_CLOSE_EVENT kills process on Win10+ regardless of handler)
+    { HWND hc=GetConsoleWindow(); if(hc){ HMENU hm=GetSystemMenu(hc,FALSE); DeleteMenu(hm,SC_CLOSE,MF_BYCOMMAND); } }
+    ShowWindow(GetConsoleWindow(), SW_HIDE);
     gConVis = false;
 
     // Main window
@@ -310,8 +343,8 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     gGX = (gW - 220.0f) * 0.5f;
     gGY = (gH - 220.0f) * 0.42f;
     APP_LOG(L"Glass initial: pos=(%.0f,%.0f) size=%.0f", gGX, gGY, gGW);
-    APP_LOG(L"GlassConfig: blur=%.1f refrA=%.0f refrH=%.0f r=%.0f sat=%.2f disp=%.2f depth=%d",
-        gCfg.blurSigma, gCfg.refractionAmount, gCfg.refractionHeight, gCfg.cornerRadius,
+    APP_LOG(L"GlassConfig: blur=%.1f refrCorrect=%.2f refrNegative=%.2f refrH=%.2f r=%.0f sat=%.2f disp=%.2f depth=%d",
+        gCfg.blurSigma, gCfg.refractionCorrect, gCfg.refractionNegative, gCfg.refractionHeight, gCfg.cornerRadius,
         gCfg.saturation, gCfg.dispersion, gCfg.depthEffect);
 
     ShowWindow(gMainWnd, nShow);
@@ -323,6 +356,8 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     auto fpsT = std::chrono::high_resolution_clock::now();
     int frames = 0;
     MSG msg;
+    auto constexpr frameTarget = std::chrono::microseconds(16667); // 60 FPS
+    auto lastFrame = std::chrono::high_resolution_clock::now();
 
     while (true) {
         while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -341,6 +376,9 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
         ImGui::NewFrame();
         DrawUI();
 
+        gCfg.highlightMouseX = (float)gMx;
+        gCfg.highlightMouseY = (float)gMy;
+
         gR.BeginFrame();
         gR.RenderGlass(gGX, gGY, gGW, gGH, gCfg);
         ImGui::Render();
@@ -356,13 +394,40 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
             frames = 0;
             fpsT = now;
         }
+        auto now2 = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(now2 - lastFrame);
+        if (elapsed < frameTarget) std::this_thread::sleep_for(frameTarget - elapsed);
+        lastFrame = std::chrono::high_resolution_clock::now();
     }
 
 done:
-    APP_LOG(L"Shutting down...");
+    APP_LOG(L"========================================");
+    APP_LOG(L"  Shutting down... (%d frames)", frames);
+    // Memory usage
+    PROCESS_MEMORY_COUNTERS pmc={sizeof(pmc)};
+    if(GetProcessMemoryInfo(GetCurrentProcess(),&pmc,sizeof(pmc)))
+        APP_LOG(L"  Memory: WS=%.1fMB Peak=%.1fMB",
+            pmc.WorkingSetSize/1048576.0,pmc.PeakWorkingSetSize/1048576.0);
+    // Stack trace
+    APP_LOG(L"  Stack trace:");
+    void* stack[16]; USHORT n=CaptureStackBackTrace(0,16,stack,nullptr);
+    for(USHORT i=0;i<n;i++){wchar_t b[32];swprintf_s(b,L"  [%d] %p",i,stack[i]);OutputDebugStringW(b);}
+    APP_LOG(L"  %d frames captured",n);
+    APP_LOG(L"========================================");
+
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
+    gR.Shutdown();
     CoUninitialize();
+
+    if (gConVis) {
+        wprintf(L"\nPress Enter to exit...\n");
+        fflush(stdout);
+        HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+        FlushConsoleInputBuffer(hIn);
+        char buf[4]; DWORD read;
+        ReadConsoleA(hIn, buf, 3, &read, nullptr);
+    }
     return 0;
 }

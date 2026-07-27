@@ -99,6 +99,8 @@ cbuffer GlassCB : register(b0) {
     float depthEffect      : packoffset(c3.x);
     float saturation       : packoffset(c3.y);
     float dispersion       : packoffset(c3.z);
+    float darkening        : packoffset(c3.w);
+    float4 glassTint       : packoffset(c4);
 };
 static const float3 lumVec = float3(0.213, 0.715, 0.072);
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
@@ -118,7 +120,8 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float4 c = blurTex.SampleLevel(s0, (pc + d * grad) * screenSizeInv, 0);
     float lum = dot(c.rgb, lumVec);
     c.rgb = lerp(float3(lum,lum,lum), c.rgb, saturation);
-    c.rgb = saturate(c.rgb * 0.92);
+    c.rgb = saturate(c.rgb * darkening);
+    c.rgb = lerp(c.rgb, glassTint.rgb, glassTint.a); // tint: blend toward tint color
     c.a *= edgeAA;
     return c;
 }
@@ -138,6 +141,8 @@ cbuffer GlassCB : register(b0) {
     float depthEffect      : packoffset(c3.x);
     float saturation       : packoffset(c3.y);
     float dispersion       : packoffset(c3.z);
+    float darkening        : packoffset(c3.w);
+    float4 glassTint       : packoffset(c4);
 };
 static const float3 lumVec = float3(0.213, 0.715, 0.072);
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
@@ -169,13 +174,14 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     s = blurTex.SampleLevel(s0, ruv - doff, 0); color.r+=s.r/7.0; color.b+=s.b/3.0; color.a+=s.a/7.0;
     float lum = dot(color.rgb, lumVec);
     color.rgb = lerp(float3(lum,lum,lum), color.rgb, saturation);
-    color.rgb = saturate(color.rgb * 0.92);
+    color.rgb = saturate(color.rgb * darkening);
+    color.rgb = lerp(color.rgb, glassTint.rgb, glassTint.a); // tint
     color.a *= edgeAA;
     return color;
 }
 )";
 
-// Edge highlight (unused — kept for future re-implementation)
+// Mouse spotlight highlight — circular glow centered at cursor
 static const char* HighlightPS = R"(
 Texture2D t0 : register(t0); SamplerState s0 : register(s0);
 )" SDF_COMMON_HLSL R"(
@@ -184,9 +190,8 @@ cbuffer HighlightCB : register(b0) {
     float2 elementSize    : packoffset(c0.z);
     float4 cornerRadii    : packoffset(c1);
     float4 highlightColor : packoffset(c2);
-    float angle           : packoffset(c3.x);
-    float falloff         : packoffset(c3.y);
-    float highlightWidth  : packoffset(c3.z);
+    float2 mousePos       : packoffset(c3.x);
+    float spotRadius      : packoffset(c3.z);
     float padding         : packoffset(c3.w);
 };
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
@@ -195,17 +200,15 @@ float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 cc = pc - elementPos - hs;
     float r = radiusAt(cc, cornerRadii);
     float sd = sdRoundedRect(cc, hs, r);
-    if (sd > highlightWidth || sd < -highlightWidth * 2.0) discard;
-    float gr = min(r * 1.5, min(hs.x, hs.y));
-    float2 grad = gradSdRoundedRect(cc, hs, gr);
-    float2 ld = float2(cos(angle), sin(angle));
-    float intensity = pow(abs(dot(grad, ld)), falloff);
-    float ef = 1.0 - smoothstep(-highlightWidth * 0.5, highlightWidth, sd);
-    return highlightColor * intensity * ef;
+    if (sd > 2.0) discard;
+    float dist = length(pc - mousePos);
+    float intensity = 1.0 - smoothstep(0.0, spotRadius, dist);
+    float edgeFade = 1.0 - smoothstep(-2.0, 0.0, sd);
+    return highlightColor * intensity * edgeFade;
 }
 )";
 
-// SDF drop shadow — offset {0,6}, blur 20px, alpha 0.30
+// SDF drop shadow — soft edge, fixed blur, alpha-blended below glass
 static const char* ShadowPS = R"(
 Texture2D t0 : register(t0); SamplerState s0 : register(s0);
 )" SDF_COMMON_HLSL R"(
@@ -214,18 +217,20 @@ cbuffer ShadowCB : register(b0) {
     float2 elementSize  : packoffset(c0.z);
     float4 cornerRadii  : packoffset(c1);
     float2 shadowOffset : packoffset(c2.x);
-    float shadowBlur    : packoffset(c2.z);
-    float padding1      : packoffset(c2.w);
+    float padding1      : packoffset(c2.z);
+    float padding2      : packoffset(c2.w);
     float4 shadowColor  : packoffset(c3);
-    float padding2      : packoffset(c4.x);
+    float padding3      : packoffset(c4.x);
 };
+static const float kShadowBlur = 12.0;
 float4 main(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     float2 pc = svpos.xy + shadowOffset;
     float2 hs = elementSize * 0.5;
     float2 cc = pc - elementPos - hs;
     float r = radiusAt(cc, cornerRadii);
     float sd = sdRoundedRect(cc, hs, r);
-    float alpha = 1.0 - smoothstep(-shadowBlur, shadowBlur, sd);
+    if (sd < 0.0) discard;
+    float alpha = 1.0 - smoothstep(0, kShadowBlur, sd);
     return shadowColor * alpha;
 }
 )";

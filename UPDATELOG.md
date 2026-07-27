@@ -1,6 +1,159 @@
+<a id="english"></a>
 # Update Log
 
-## 2026-07-26
+[English](#english) · [中文](#chinese)
+
+## v0.0.3 (2026-07-27)
+
+### Highlight System (Mouse Spotlight)
+- `HighlightPS` rewritten: circular spotlight at cursor `intensity = 1 - smoothstep(0, spotRadius, dist(pixel, mouse))`
+- `GlassConfig` added `highlightMouseX/Y`, `spotRadius` (80px), `highlightAlpha` (0.20)
+- API: `HighlightAlpha(float)`, Control Panel slider
+
+### Refraction Parameter Refactor (Breaking Change)
+- `refractionHeight` / `refractionAmount` from absolute pixels → glassSize-proportional
+- Split into `refractionCorrect` (convex) + `refractionNegative` (concave)
+- API: `RefrAmountCorrect(float)` / `RefrAmountNegative(float)`
+- Control Panel: `Refr Mode` Combo, slider range 0.00~0.30
+
+### Configurable Darkening
+- `GlassConfig::darkening` (default 0.92), passed via `GlassCB.c3.w`
+- API: `Darkening(float)`, Control Panel slider (0.50~1.00)
+
+### Shadow System Refactor
+- `GlassConfig` added `shadowOffsetX/Y`, `shadowAlpha`
+- ShadowPS: `discard` inside glass + fixed 12px soft edge
+- Removed `shadowBlur` parameter
+- API: `ShadowOffset(x,y)`, `ShadowAlpha(alpha)`
+
+### Glass Tint System
+- `GlassConfig` added `glassTintR/G/B/A`, `GlassCB` extended to c4
+- 10 color buttons now tint glass instead of changing background
+- API: `GlassTint(r,g,b,a)`
+
+### Scissor Rect Optimization
+- Added `rasterScissor` state, clips shadow/glass/highlight passes
+- GPU skips pixel shader outside glass — only 14.4% of pixels processed
+
+### Anti-Game-Detection
+- `DXGI_SWAP_EFFECT_DISCARD` → `FLIP_SEQUENTIAL` + 60 FPS frame cap
+
+### Crash Fix + Engineering
+- `Renderer::Shutdown()` for COM cleanup before `CoUninitialize`
+- Removed `static` locals (`lastMode`, `callCount` → Impl members)
+- `Renderer`: deleted copy, implemented move
+
+### Logging Enhancements
+- All setters log via `LG_LOG`; exit prints frame count, memory, 16-frame stack trace
+- Console X button removed (`DeleteMenu(SC_CLOSE)`); Ctrl+C intercepted
+
+### Build + Docs
+- vcxproj ImGui paths now relative (`..\..\imgui\`), removed `imgui_demo.cpp`
+- `README.md`: bilingual, badges, pipeline table, API overview
+
+---
+
+## v0.0.2 (2026-07-26)
+
+### API Changes
+- Dispersion: `bool` → `float` (0.0~1.0)
+- Refraction split: `RefractionHeight` + `RefractionAmount`
+
+### Controls Panel Refactor
+- ImGui replaced raw Win32 controls (~180 lines removed)
+
+### Bug Fixes
+- NaN white lines on glass resize: `sign(0)=0` → zero gradient → NaN
+- `normalize((0,0))` NaN at glass center fixed with epsilon
+
+### Performance
+- Removed `imgui_demo.cpp` from build
+- WIC Factory cached after first load
+
+### README
+- Bilingual rewrite with badges, pipeline table, demo section
+
+---
+
+## 2026-07-25
+
+### Initial Refactor
+- Deleted broken old `src/glass_renderer.*` implementation
+- Unified `LiquidGlass::Renderer` API
+- Fixed D3D11 SRV/RTV binding conflict
+- SDF edge anti-aliasing via `smoothstep(-1,1,sd)`
+- Fluent setter API: `Blur()`/`Saturation()`/`Radius()` etc.
+- Removed `WDA_EXCLUDEDFROMCAPTURE`
+- Fixed `PassthroughPS` composite shader
+
+---
+
+<a id="chinese"></a>
+# 更新日志
+
+[English](#english) · [中文](#chinese)
+
+## v0.0.3 (2026-07-27)
+
+### 高光系统（鼠标聚光灯）
+- `HighlightPS` 重写：鼠标位置圆形聚光灯 `intensity = 1 - smoothstep(0, spotRadius, dist(pixel, mouse))`
+- `GlassConfig` 新增 `highlightMouseX/Y`、`spotRadius`（80px）、`highlightAlpha`（0.20）
+- `Renderer` 新增 `HighlightAlpha(float)` setter，Control Panel 新增 Highlight 滑块
+
+### 折射参数体系重构（Breaking Change）
+- `refractionHeight` / `refractionAmount` 从绝对像素 → glassSize 比例值
+  - `refrH = fraction × glassMin × 0.5`，`refrA = (correct - negative) × glassMin`
+- `refractionAmount` 拆分为 `refractionCorrect`（凸透镜）+ `refractionNegative`（凹透镜）
+- API：`RefrAmountCorrect(float)` / `RefrAmountNegative(float)`
+- Control Panel：`Refr Mode` Combo 下拉切换，滑块范围 0.00~0.30
+
+### 暗化系数可配置
+- `GlassConfig::darkening`（默认 0.92），`GlassCB.c3.w` 传着色器
+- `c.rgb = saturate(c.rgb * darkening)` 替代硬编码 0.92
+- `Renderer::Darkening(float)` setter + Control Panel 滑块（0.50~1.00）
+
+### 阴影系统重构
+- `GlassConfig` 新增 `shadowOffsetX/Y`、`shadowAlpha`
+- 默认偏移 (0,0)，均匀光晕；默认不透明度 0.20
+- ShadowPS：`discard` 玻璃内部 + 固定 12px 柔和边缘
+- 移除 `shadowBlur` 参数（改固定值）
+- API：`ShadowOffset(x,y)`、`ShadowAlpha(alpha)`
+- Control Panel：Shadow Alpha 滑块（0.00~0.35）
+
+### 玻璃染色系统
+- `GlassConfig` 新增 `glassTintR/G/B/A`，`GlassCB` 扩展 c4
+- 10 色按钮：背景色 → 玻璃染色（`lerp` 混入色调，0.6 强度）
+- "Clear Tint" 按钮恢复无染色状态
+- 着色器：`c.rgb = lerp(c.rgb, glassTint.rgb, glassTint.a)`
+- API：`GlassTint(r,g,b,a)`
+
+### 渲染性能优化（Scissor Rect）
+- 新增 `rasterScissor` 状态（`ScissorEnable=TRUE`）
+- 阴影、玻璃体、高光 3 Pass 前设置 scissor rect
+- GPU 硬件跳过玻璃外像素着色器，220×220 玻璃仅 14.4% 像素需处理
+
+### 反游戏检测
+- `DXGI_SWAP_EFFECT_DISCARD` → `FLIP_SEQUENTIAL` + 60 FPS 帧率上限
+
+### 崩溃修复 + 工程化
+- `Renderer::Shutdown()` — 手动释放 COM 资源，避免 `CoUninitialize` 后析构崩溃
+- 消除 `static` 局部变量（`lastMode`、`callCount` 移入 Impl）
+- `Renderer` 禁 copy + 实现 move
+
+### 日志系统增强
+- 所有 setter 加 `LG_LOG`，GlassCB 上传日志含 tint/darkening 值
+- 退出时打印帧数、内存占用（WorkingSet/Peak）、16 层调用堆栈
+- 控制台 X 按钮移除（`DeleteMenu(SC_CLOSE)`），防误关
+- Ctrl+C 拦截，关闭控制台提示用 Control Panel 的 Hide Console
+
+### 构建 + 文档
+- vcxproj ImGui 路径绝对 → 相对（`..\..\imgui\`），移除 `imgui_demo.cpp`
+- `README.md`：中英双语，shields.io 徽章、渲染管线表、Demo 章节、API 速览
+- 着色器注释、CB 结构体注释、Impl 字段分组
+
+---
+
+## v0.0.2 (2026-07-26)
 
 ### API 变更
 - **Dispersion 参数**：从 `bool` 改为 `float`（0.0~1.0），改为滑块控制色散强度
@@ -88,3 +241,5 @@
 ### Bug 修复
 - 移除 `WDA_EXCLUDEDFROMCAPTURE`（截图时窗口消失）
 - 修复 `PassthroughPS` 合成着色器（原 `ImageCopyPS` 缺少常量缓冲区）
+
+---

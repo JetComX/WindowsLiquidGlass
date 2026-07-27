@@ -8,7 +8,7 @@
 [English](#english) · [中文](#chinese)
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/JetComX/WindowsLiquidGlass)
-[![Version](https://img.shields.io/badge/version-v0.0.2-blue)](https://github.com/JetComX/WindowsLiquidGlass/releases)
+[![Version](https://img.shields.io/badge/version-v0.0.3-blue)](https://github.com/JetComX/WindowsLiquidGlass/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-orange)](https://github.com/JetComX/WindowsLiquidGlass/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blueviolet)](https://github.com/JetComX/WindowsLiquidGlass)
 [![GPU](https://img.shields.io/badge/GPU-D3D11%20FL%2011.0%2B-red)](https://github.com/JetComX/WindowsLiquidGlass)
@@ -18,8 +18,6 @@
 ---
 
 ![Screenshot](demopicture/demo.png)
-
-<p align="center"><a href="https://raw.githubusercontent.com/JetComX/WindowsLiquidGlass/main/demopicture/demo_preview.gif"> Watch Animated Demo (GIF)</a></p>
 
 ---
 
@@ -111,14 +109,16 @@ Linker dependencies are handled automatically via `#pragma comment(lib, ...)` �
 Renderer glass;
 
 // Fluent parameter chaining
-glass.Init(hwnd, 1920, 1080)
-     .Blur(12.0f)                // 0.1 ~ 30
+glass.Init(hwnd, 1920, 1080);
+glass.Blur(12.0f)                // 0.1 ~ 30
      .Radius(40.0f)              // 0 ~ 80
      .Saturation(1.5f)           // 1.0 ~ 2.0
-     .RefractionAmount(50.0f)    // 4 ~ 120
-     .RefractionHeight(30.0f)    // 4 ~ 60
+     .RefrAmountCorrect(0.15f)   // convex, 0.00~0.30
+     .RefrAmountNegative(0.00f)  // concave, 0.00~0.30
+     .RefractionHeight(0.20f)    // 0.00~0.30
      .Dispersion(1.0f)           // 0.0 ~ 1.0
-     .Depth(true);
+     .Depth(true)
+     .HighlightAlpha(0.20f);     // mouse spotlight
 
 // Background
 glass.SetBackgroundColor(0.2f, 0.2f, 0.3f);
@@ -204,7 +204,7 @@ If this project helps you, please give it a Star ⭐ — it means the world to o
 [English](#english) · [中文](#chinese)
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/JetComX/WindowsLiquidGlass)
-[![Version](https://img.shields.io/badge/version-v0.0.2-blue)](https://github.com/JetComX/WindowsLiquidGlass/releases)
+[![Version](https://img.shields.io/badge/version-v0.0.3-blue)](https://github.com/JetComX/WindowsLiquidGlass/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-orange)](https://github.com/JetComX/WindowsLiquidGlass/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blueviolet)](https://github.com/JetComX/WindowsLiquidGlass)
 [![GPU](https://img.shields.io/badge/GPU-D3D11%20FL%2011.0%2B-red)](https://github.com/JetComX/WindowsLiquidGlass)
@@ -214,8 +214,6 @@ If this project helps you, please give it a Star ⭐ — it means the world to o
 ---
 
 ![Screenshot](demopicture/demo.png)
-
-<p align="center"><a href="https://raw.githubusercontent.com/JetComX/WindowsLiquidGlass/main/demopicture/demo_preview.gif"> Watch Animated Demo (GIF)</a></p>
 
 ---
 
@@ -307,14 +305,16 @@ glass.Resize(newWidth, newHeight);
 Renderer glass;
 
 // 链式设置参数（全部返回 Renderer&，支持链式调用）
-glass.Init(hwnd, 1920, 1080)
-     .Blur(12.0f)                // 模糊 0.1~30
+glass.Init(hwnd, 1920, 1080);
+glass.Blur(12.0f)                // 模糊 0.1~30
      .Radius(40.0f)              // 圆角 0~80
      .Saturation(1.5f)           // 饱和度 1.0~2.0
-     .RefractionAmount(50.0f)    // 折射扭曲 4~120
-     .RefractionHeight(30.0f)    // 折射厚度 4~60
+     .RefrAmountCorrect(0.15f)   // 凸透镜，0.00~0.30
+     .RefrAmountNegative(0.00f)  // 凹透镜，0.00~0.30
+     .RefractionHeight(0.20f)    // 0.00~0.30
      .Dispersion(1.0f)           // 色散 0.0~1.0
-     .Depth(true);               // 深度效果
+     .Depth(true)                // 深度效果
+     .HighlightAlpha(0.20f);     // 鼠标聚光灯
 
 // 背景
 glass.SetBackgroundColor(0.2f, 0.2f, 0.3f);

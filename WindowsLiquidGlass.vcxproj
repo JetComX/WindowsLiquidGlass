@@ -83,7 +83,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);U:\Develop\imgui;U:\Develop\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);..\..\imgui;..\..\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -105,7 +105,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);U:\Develop\imgui;U:\Develop\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);..\..\imgui;..\..\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -125,7 +125,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);U:\Develop\imgui;U:\Develop\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);..\..\imgui;..\..\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -147,7 +147,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);U:\Develop\imgui;U:\Develop\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);..\..\imgui;..\..\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -162,22 +162,22 @@
   <ItemGroup>
     <ClCompile Include="LiquidGlass.cpp" />
     <ClCompile Include="src\main.cpp" />
-    <ClCompile Include="U:\Develop\imgui\imgui.cpp" />
-    <ClCompile Include="U:\Develop\imgui\imgui_draw.cpp" />
-    <ClCompile Include="U:\Develop\imgui\imgui_widgets.cpp" />
-    <ClCompile Include="U:\Develop\imgui\imgui_tables.cpp" />
+    <ClCompile Include="..\..\imgui\imgui.cpp" />
+    <ClCompile Include="..\..\imgui\imgui_draw.cpp" />
+    <ClCompile Include="..\..\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="..\..\imgui\imgui_tables.cpp" />
 
-    <ClCompile Include="U:\Develop\imgui\backends\imgui_impl_win32.cpp" />
-    <ClCompile Include="U:\Develop\imgui\backends\imgui_impl_dx11.cpp" />
+    <ClCompile Include="..\..\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="..\..\imgui\backends\imgui_impl_dx11.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LiquidGlass.h" />
     <ClInclude Include="LiquidGlassShaders.h" />
-    <ClInclude Include="U:\Develop\imgui\imgui.h" />
-    <ClInclude Include="U:\Develop\imgui\imgui_internal.h" />
-    <ClInclude Include="U:\Develop\imgui\imconfig.h" />
-    <ClInclude Include="U:\Develop\imgui\backends\imgui_impl_win32.h" />
-    <ClInclude Include="U:\Develop\imgui\backends\imgui_impl_dx11.h" />
+    <ClInclude Include="..\..\imgui\imgui.h" />
+    <ClInclude Include="..\..\imgui\imgui_internal.h" />
+    <ClInclude Include="..\..\imgui\imconfig.h" />
+    <ClInclude Include="..\..\imgui\backends\imgui_impl_win32.h" />
+    <ClInclude Include="..\..\imgui\backends\imgui_impl_dx11.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
